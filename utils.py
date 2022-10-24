@@ -4,16 +4,17 @@ import pickle
 import numpy as np
 import scipy.sparse as sp
 import matplotlib.pyplot as plt
-
+from scipy import linalg
 from keras import metrics
 from keras import backend as K
-
+import ast
 from keras.optimizers import Adam
 from keras.models import (Model, load_model, clone_model)
 from keras.layers import (Input, Dense, Softmax, Lambda)
 from keras.optimizers import Adagrad
 from keras.initializers import RandomNormal
 
+import deepchem as dc
 from rdkit.Chem import MolFromSmiles
 from deepchem.feat import WeaveFeaturizer, ConvMolFeaturizer
 from deepchem.splits import RandomSplitter, ScaffoldSplitter
@@ -41,6 +42,15 @@ def load_data(csv_fp, labels_col="p_np", smiles_col="smiles"):
             "labels":labels,
             "smiles": smiles}
 
+#we can hard code config, no need "dataset" because we only use "BBBP"
+def load_manual_annotation():
+    dict4train = convert_human_data_to_dict("mask_data/BBBP_train.csv")
+    dict4test = convert_human_data_to_dict("mask_data/BBBP_test.csv")
+    dict4val = convert_human_data_to_dict("mask_data/BBBP_val.csv")
+    print(f"john's dict4val: {dict4val}")
+    return dict4train,dict4test,dict4val
+    # mask_data
+
 def load_human_data(config, dataset):
     """
     Load human annotation data for a dataset
@@ -66,7 +76,7 @@ def load_human_data(config, dataset):
     base_fp = config['human_data_dir']
 
     # only load the human mask for training if 'human_mask' is True
-    if config['human_mask']:
+    if config['human_mask']: #we use this branch because it is coded True
         train_fp = os.path.join(base_fp, dataset+'_train.csv')
         train_data = pd.read_csv(train_fp)
         train_dict = read_human_data_from_pd(train_data)
@@ -80,10 +90,36 @@ def load_human_data(config, dataset):
     test_fp = os.path.join(base_fp, dataset+'_test.csv')
     test_data = pd.read_csv(test_fp)
     test_dict = read_human_data_from_pd (test_data)
-
+    print(f"original train_dict: {train_dict}")
     return {"train": train_dict,
             "val": val_dict,
             "test":test_dict}
+
+#correctness check, corresponding to read_human_data_from_pd
+def convert_human_data_to_dict(file_path):
+    f = open(file_path, "r") 
+    data_dict = {}
+    all_lines = f.readlines()
+    # print(f"all_lines: {all_lines}")
+    for each_line in all_lines[1:]:
+        print(f"each line: {each_line}")
+        if "skipped" not in each_line:
+            value = "\"{\"\"" + each_line.split(",\"{\"\"")[1]
+            row_id,img_id,state = each_line.split(",\"{\"\"")[0].split(",")
+            # print(f"value is {value}")
+            if state == "labeled":
+                if img_id not in data_dict:
+                    data_dict[img_id] = {}
+                # mask = json.loads(value[1:-1])
+                data_dict[img_id]['node_importance'] = ast.literal_eval(value.split(', ""edge_importance"": ')[0].replace('"{""node_importance"": ',""))
+                if ",,,,,," in value:#val.csv has ,,,,, attach along some of the records
+                    value = value.split(",,,,,,")[0]
+                data_dict[img_id]['edge_importance'] = ast.literal_eval(value.split(', ""edge_importance"": ')[1].replace('}"',""))
+                print(f"john's node_importance: {data_dict[img_id]['node_importance']}")
+                print(f"john's edge_importance: {data_dict[img_id]['edge_importance']}")
+                break
+    f.close()
+    return data_dict
 
 def read_human_data_from_pd(data):
     dict = {}
@@ -106,22 +142,76 @@ def read_human_data_from_pd(data):
 
     return dict
 
-def normalize_adj(adj, symmetric=True):
-    if symmetric:
-        d = sp.diags(np.power(np.array(adj.sum(1)), -0.5).flatten(), 0)
-        a_norm = adj.dot(d).transpose().dot(d).tocsr()
-    else:
-        d = sp.diags(np.power(np.array(adj.sum(1)), -1).flatten(), 0)
-        a_norm = d.dot(adj).tocsr()
-    return a_norm
-
-
-def preprocess_adj(adj, symmetric=True):
+#TODO: not refactor yet
+def preprocess_adj(adj):
     adj = sp.csr_matrix(adj)
     adj = adj + sp.eye(adj.shape[0])
-    adj = normalize_adj(adj, symmetric)
+    d = sp.diags(np.power(np.array(adj.sum(1)), -0.5).flatten(), 0)
+    adj = adj.dot(d).transpose().dot(d).tocsr()
     return adj.toarray()
 
+#only for raw data, we also need to form one_shot for feature, that function is in form_one_shot_feature
+def form_one_shot(label_list): 
+    # num_label = len(list(set(label_list)))
+    # print(f"num_label: {num_label}")
+    one_shot_label_list = []
+    for each_label in label_list: #label_list is a multiD list (e.g., [[1],[1],[0]])
+        raw_label_list = [0,0]
+        raw_label_list[each_label[0]] = 1
+        one_shot_label_list.append(raw_label_list)
+    # print(f"np.array(one_shot_label_list): {np.array(one_shot_label_list)}")
+    return np.array(one_shot_label_list)
+
+def process_features(molecules,vertices):
+    features = {}
+    molecules_index = 0
+    for each_molecule in molecules:
+        sortind = np.argsort(vertices[molecules_index].sum(axis = 1) - 1)
+        row_index = 0
+        row_to_row_sum_dict = {}
+        for each_row in vertices[molecules_index]:
+            num_of_neighbours = sum(each_row)
+            # print(f"each_row: {each_row}, sum: {num_of_neighbours}")
+            row_to_row_sum_dict[row_index] = num_of_neighbours
+            row_index += 1
+        sorted_dict = {k: v for k, v in sorted(row_to_row_sum_dict.items(), key=lambda item: item[1])}
+        sorted_row_id = np.array(list(sorted_dict.keys()))
+        print(f"sorted_row_id is {sorted_row_id}")
+        print(f"sortind is {sortind}")
+        # assert sorted_row_id.all() == sortind.all(), f"sorted_row_id ({sorted_row_id}) and sortind ({sortind}) not equal" #John assertion
+        
+        # number_of_ele_in_row = sorted_row_id.size
+        sorted_matrix = form_one_shot_feature(sorted_row_id)
+        # assert sorted_matrix.all() == np.eye(20)[sortind,:].all(), f"sorted_matrix incorrect, expected {np.eye(N)[sortind,:]} but got {sorted_matrix}"
+        # node_features.append(np.matmul(sortMatrix.T, feat.get_atom_features()))
+        features[molecules_index] = sorted_matrix.T.dot(each_molecule.get_atom_features())#correctness checked
+        print(f"features[molecules_index]: {features[molecules_index]}")
+        molecules_index += 1
+        break
+
+# def matrix_mulitplication(a,b):
+#     for i in range(len(a)):
+#     # iterating by column by B
+#     for j in range(len(b[0])):
+#         # iterating by rows of B
+#         for k in range(len(b)):
+#             result[i][j] += A[i][k] * B[k][j]
+#     return result
+
+#input is sorted id, e.g., [19  6  0  2  3 17 16 15 14 12 11  8  7  4 10 18 13  1  5  9]
+#output is a list containing the one hot vector based on the sorted id: e.g., [[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 1.],...]
+def form_one_shot_feature(sorted_id): 
+    # num_label = len(list(set(label_list)))
+    # print(f"num_label: {num_label}")
+    one_shot_label_list = []
+    for each_id in sorted_id: #label_list is a multiD list (e.g., [[1],[1],[0]])
+        raw_label_list = [0 for i in range(20)]
+        raw_label_list[each_id] = 1
+        one_shot_label_list.append(raw_label_list)
+    # print(f"np.array(one_shot_label_list): {np.array(one_shot_label_list)}")
+    sorted_matrix = np.array(one_shot_label_list)
+    print(f"form_one_shot_feature's sorted_matrix: {sorted_matrix}")
+    return sorted_matrix
 
 def preprocess(raw_data, feats="convmol"):
     """
@@ -130,11 +220,20 @@ def preprocess(raw_data, feats="convmol"):
     labels = raw_data['labels']
     smiles = raw_data['smiles']
     adjs = raw_data['adjs']
+    
+    # print(f"label before onehot: {labels}")
+    
     num_classes = np.unique(labels).shape[0]
+    # assert form_one_shot(labels.tolist()) == 2, f"incorrect number of labels, expected 2 but got {form_one_shot}" #assertion 2
+    # print(f"num_classes: {num_classes}")
+    # print(f"labels.reshape(-1): {len(labels.reshape(-1))}")
 
     #One hot labels
     labels_one_hot = np.eye(num_classes)[labels.reshape(-1)]
-
+    # print(f"labels_one_hot: {labels_one_hot}")
+    assert len(labels_one_hot) == len(form_one_shot(labels.tolist())), "assertion filed" #John assertion 1
+    # print(f"label after onehot: {labels_one_hot}")
+    labels_one_hot = form_one_shot(labels.tolist())
     if feats == "weave":
         featurizer = WeaveFeaturizer()
     elif feats == "convmol":
@@ -145,11 +244,19 @@ def preprocess(raw_data, feats="convmol"):
     #Sort feature matrices by node degree
     node_features = []
     for i,feat in enumerate(mol_objs):
+        # print(f"adjs[i]: {adjs[i]}")
         sortind = np.argsort(adjs[i].sum(axis = 1) - 1)
+        # print(f"sortind: {sortind}")
+        # print(f"node_features: {node_features}")
         N = len(sortind)
         sortMatrix = np.eye(N)[sortind,:]
+        # print(f"sortMatrix: {sortMatrix}")
         node_features.append(np.matmul(sortMatrix.T, feat.get_atom_features()))
-
+        # print(f"node_features: {node_features}")
+        # break
+    
+    # process_features(mol_objs,adjs)
+    # assert False, "debugging"
     #Normalize Adjacency Mats
     norm_adjs = [preprocess_adj(A) for A in adjs]
 
@@ -184,6 +291,93 @@ def matmul(XY):
 def GAP(X):
     return K.tf.reduce_mean(X, axis=1, keepdims=True)
 
+#john mimics def keras_gcn
+def build_gcn(config):
+    """
+    Keras GCN for graph classification
+    """
+    # d = config['d']
+    # L1 = config['L1']
+    # L2 = config['L2']
+    # L3 = config['L3']
+    # N = config['N']
+    # print(f"N is {N}")
+    # num_classes = config['num_classes']
+    # print(f"batch_size is {batch_size}")
+    exp_method_name = config['exp_method']
+
+    # currently the implementation of the pipeline only support batch_size = 1
+    # assert batch_size == 1, "Batch size != 1 Not Implemented!"
+
+    first_input = Input(shape=(1,None,None), batch_shape=(1,None,None))
+    second_input = Input(shape=(1, None, None), batch_shape=(1, None, None))
+    third_input = Input(shape=(1, None, None), batch_shape=(1, None, None))
+    last_input = Input(shape=(1,None,75), batch_shape=(1,None,75))
+    main_matrix = Input(shape=(1, None, 1), batch_shape=(1, None, 1))
+    edge_matrix = Input(shape=(1, None, None), batch_shape=(1, None, None))
+    adj_matrix = Input(shape=(1, None, None), batch_shape=(1, None, None))
+
+    # h1 = dense(L1)(K.tf.matmul(A_batch1, X_batch))
+    first_output = dense(256)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([first_input, last_input]))
+    second_output = dense(128)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([second_input, first_output]))
+    third_output = dense(64)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([third_input, second_output]))
+    logits = dense(2)(Lambda(lambda y: K.squeeze(y, 1))(Lambda(lambda x: K.tf.reduce_mean(x, axis=1, keepdims=True))(third_output)))
+    fina_output = Softmax()(logits)
+    model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=fina_output)
+
+    if exp_method_name =='GCAM':
+        # node mask
+        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
+        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
+        node_mask = K.stack([maskh0, maskh1], axis=0)
+        # node_mask = [maskh0,maskh1]
+
+        # edge mask
+        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
+        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
+        edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
+
+    elif exp_method_name =='EB':
+        pLamda4=ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([1,0])))
+        pdense3=ebGAP(model.layers[-5].output,pLamda4)
+        pLambda3=ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
+        pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+        pLambda2=ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
+        pdense1=ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
+        pLambda1=ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
+        pin=ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
+        mask0=K.squeeze(K.sum(pin,axis=2),0)
+        edge_mask0 = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+
+        pLamda4=ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([0,1])))
+        pdense3=ebGAP(model.layers[-5].output,pLamda4)
+        pLambda3=ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
+        pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+        pLambda2=ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
+        pdense1=ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
+        pLambda1=ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
+        pin=ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
+        mask1=K.squeeze(K.sum(pin,axis=2),0)
+        edge_mask1 = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+
+        # node mask
+        node_mask = K.stack([mask0, mask1], axis=0)
+        # edge mask
+        edge_mask = K.stack([edge_mask0, edge_mask1], axis=0)
+    else:
+        print('Unknown exp method name. use GCAM as default')
+        # node mask
+        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
+        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
+        node_mask = K.stack([maskh0, maskh1], axis=0)
+        # node_mask = [maskh0,maskh1]
+
+        # edge mask
+        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
+        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
+        edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
+    model.compile(optimizer=Adam(lr=0.001),
+                  loss=custom_loss(['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
 
 def keras_gcn(config):
     """
@@ -276,7 +470,8 @@ def keras_gcn(config):
         edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
     model.compile(optimizer=Adam(lr=learning_rate),
                   loss=custom_loss(reg_list, logits, Adj, node_mask, edge_mask, M, E))
-
+    build_gcn(config)
+    assert False, "debugging"
     # print('node_explanation:', node_explanation[0])
     return model
 
@@ -404,34 +599,19 @@ def ebMoleculeEdge(activations, A, bottomP):
     return mask_adj
 
 
-def gcn_train(model, data, num_epochs, train_inds, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
-    Adjs = data['adjs']
-    norm_adjs = data['norm_adjs']
-    labels_one_hot = data['labels_one_hot']
-
-    node_features = data['node_features']
+def gcn_train(adj_matrix,normalised_adj,one_hot_label,features,model, data, num_epochs, training_data, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
     total_loss = []
     best = 0
     for epoch in range(num_epochs):
         epoch_loss = []
         #Train
-        rand_inds = np.random.permutation(train_inds)
-        for ri in rand_inds:
-
-            Adj = Adjs[ri][np.newaxis, :, :]
-            A_arr = norm_adjs[ri][np.newaxis, :, :]
-            X_arr = node_features[ri][np.newaxis, :, :]
-            Y_arr = labels_one_hot[ri][np.newaxis, :]
+        permutation_set = np.random.permutation(training_data)
+        for ri in permutation_set:
 
             if ri in human_data['train']:
-                M = np.array(human_data['train'][ri]['node_importance'])[np.newaxis, :, np.newaxis]
-                E = np.array(human_data['train'][ri]['edge_importance'])[np.newaxis, :, :]
+                sample_loss = model.train_on_batch(x=[np.array(human_data['train'][ri]['node_importance'])[np.newaxis, :, np.newaxis], np.array(human_data['train'][ri]['edge_importance'])[np.newaxis, :, :], adj_matrix[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], features[ri][np.newaxis, :, :]], y=one_hot_label[ri][np.newaxis, :], )
             else:
-                N = Adj.shape[1]
-                M = np.zeros((1, N, 1))
-                E = np.zeros((1, N, N))
-
-            sample_loss = model.train_on_batch(x=[M, E, Adj, A_arr, A_arr, A_arr, X_arr], y=Y_arr, )
+                sample_loss = model.train_on_batch(x=[np.zeros((1, adj_matrix.shape[1], 1)), np.zeros((1, adj_matrix.shape[1], adj_matrix.shape[1])), adj_matrix[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], features[ri][np.newaxis, :, :]], y=one_hot_label[ri][np.newaxis, :], )
             epoch_loss.append(sample_loss)
             # print(sample_loss)
 
@@ -473,6 +653,16 @@ class MockDataset:
     def __len__(self):
         return len(self.ids)
 
+#john
+def partition_dataset(smiles):
+    #can we use s
+    # print(f"smiles is {smiles}")
+    Xs = np.zeros(len(smiles))
+    Ys = np.ones(len(smiles))
+    dataset = dc.data.DiskDataset.from_numpy(X=Xs,y=Ys,w=np.zeros(len(smiles)),ids=smiles)
+    partitioner = ScaffoldSplitter()
+    train_partition, val_partition, test_partition = partitioner.split(dataset)
+    return train_partition, val_partition, test_partition
 
 def partition_train_val_test(smiles, dataset):
     """

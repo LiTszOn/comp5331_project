@@ -6,7 +6,7 @@ sys.path.append("../")
 
 from config import load_config
 from utils import (load_data, preprocess, run_train, load_human_data,
-                   partition_train_val_test, print_eval_avg)
+                   partition_train_val_test, print_eval_avg,load_manual_annotation,partition_dataset)
 
 # dataset
 dataset = "BBBP"
@@ -26,6 +26,8 @@ data = preprocess(raw_data)
 
 # load human mask for train/val/test
 human_data = load_human_data(config, dataset)
+# dict4train,dict4test,dict4val = load_manual_annotation()
+
 
 eval_results = {}
 model_out_fn = "GNES_{}.h5".format(dataset.lower())
@@ -35,10 +37,10 @@ for i in range(N):
     print("*" * 50)
     print(i)
     inds = partition_train_val_test(raw_data["smiles"], dataset)
-
+    train_partition, val_partition, test_partition = partition_dataset(raw_data["smiles"])
     model, eval_metrics = run_train(config, data, inds, save_path, human_data, train=train_flag)
     eval_results[i] = eval_metrics
-
+    break
 # Evaluate
 print(dataset + "\n")
 
