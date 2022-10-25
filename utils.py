@@ -270,20 +270,11 @@ def preprocess(raw_data, feats="convmol"):
     labels = raw_data['labels']
     smiles = raw_data['smiles']
     adjs = raw_data['adjs']
-    
-    # print(f"label before onehot: {labels}")
-    
     num_classes = np.unique(labels).shape[0]
-    # assert form_one_shot(labels.tolist()) == 2, f"incorrect number of labels, expected 2 but got {form_one_shot}" #assertion 2
-    # print(f"num_classes: {num_classes}")
-    # print(f"labels.reshape(-1): {len(labels.reshape(-1))}")
 
     #One hot labels
     labels_one_hot = np.eye(num_classes)[labels.reshape(-1)]
-    # print(f"labels_one_hot: {labels_one_hot}")
-    # assert len(labels_one_hot) == len(form_one_shot(labels.tolist())), "assertion filed" #John assertion 1
-    # # print(f"label after onehot: {labels_one_hot}")
-    # labels_one_hot = form_one_shot(labels.tolist())
+
     if feats == "weave":
         featurizer = WeaveFeaturizer()
     elif feats == "convmol":
@@ -294,23 +285,14 @@ def preprocess(raw_data, feats="convmol"):
     #Sort feature matrices by node degree
     node_features = []
     for i,feat in enumerate(mol_objs):
-        # print(f"adjs[i]: {adjs[i]}")
         sortind = np.argsort(adjs[i].sum(axis = 1) - 1)
-        # print(f"sortind: {sortind}")
-        # print(f"node_features: {node_features}")
         N = len(sortind)
         sortMatrix = np.eye(N)[sortind,:]
-        # print(f"sortMatrix: {sortMatrix}")
         node_features.append(np.matmul(sortMatrix.T, feat.get_atom_features()))
-        # print(f"node_features: {node_features}")
-        # break
-    
-    # process_features(mol_objs,adjs)
-    # assert False, "debugging"
+
     #Normalize Adjacency Mats
-    norm_adjs = [preprocess_adj(A) for A in adjs]
-    # _ = preprocess_adj(adjs[0])
-    # assert False, "debug preprocess adj"
+    norm_adjs = [normalise_adj(A) for A in adjs]
+
     return {'labels_one_hot': labels_one_hot,
             'node_features': node_features,
             'adjs': adjs,
