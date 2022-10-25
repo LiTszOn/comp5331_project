@@ -145,6 +145,56 @@ def read_human_data_from_pd(data):
 #TODO: not refactor yet
 def preprocess_adj(adj):
     adj = sp.csr_matrix(adj)
+    adj_numpy = adj.toarray()
+    # print(f"preprocess_adj's adj is {adj}")
+    # print(f"adj.shape[0] is {adj.shape[0]}")
+    # print(f"adj_numpy[0].size is {adj_numpy[0].size}")
+    adj = adj + sp.eye(adj.shape[0])
+    # print(f"adj after identity: {adj}")
+    #computing an identity matrix
+    identity_matrix = []
+    for i in range(adj_numpy[0].size):
+        inner_matrix = [0 for j in range(adj_numpy[0].size)]
+        inner_matrix[i] = 1
+        identity_matrix.append(inner_matrix)
+    
+    adj_numpy_after_adding_identity = adj_numpy + np.array(identity_matrix)
+    # print(f"adj_numpy_after_adding_identity after identity: {adj_numpy_after_adding_identity}")
+    # adj = adj + sp.eye(adj.shape[0])
+    # print(f"sp.eye(adj.shape[0]) is {sp.eye(adj.shape[0])}")
+    sum_of_adj = []
+    # print(f"adj.toarray(): {adj.toarray()}")
+    for each_row in adj.toarray():
+        sum = 0
+        # print(f"each_row is {each_row}")
+        for entry_index, each_entry in enumerate(each_row):
+            sum += each_entry
+        # print(f"sum is {sum}")
+        sum_of_adj.append(sum**(-0.5))
+    # print(f"sum_of_adj is {sum_of_adj}")
+    # # print(f"adj: {adj}")
+    # print(f"adj.sum(1): {adj.sum(1)}")
+    # print(f"np.power(np.array(adj.sum(1)), -0.5): {np.power(np.array(adj.sum(1)), -0.5)}")
+    d = sp.diags(np.power(np.array(adj.sum(1)), -0.5).flatten(), 0)
+    multi_diagonal_matrix = []
+    for i in range(len(sum_of_adj)):
+        zero_array = [0 for j in range(len(sum_of_adj))]
+        zero_array[i] = sum_of_adj[i]
+        multi_diagonal_matrix.append(zero_array)
+    # print(f"d: {d.toarray()}")
+    # print(f"multi_diagonal_matrix: {multi_diagonal_matrix}")
+    adj = adj.dot(d).transpose().dot(d).tocsr()
+    normalised_adj = np.multiply(np.multiply(adj,np.array(multi_diagonal_matrix)).T,multi_diagonal_matrix)
+    # print(f"normalised_adj is {normalised_adj}")
+    # multiply_normalise = adj.dot(multi_diagonal_matrix)
+    # normalised_adj = sp.csr_matrix(np.multiply(np.multiply(adj,multi_diagonal_matrix).T,multi_diagonal_matrix)).tocsr()
+    # print(f"normalised_adj: {normalised_adj}")
+    # assert False, "debugging preprocess_adj"
+
+    return normalised_adj
+
+def normalise_adj(adj):
+    adj = sp.csr_matrix(adj)
     adj = adj + sp.eye(adj.shape[0])
     d = sp.diags(np.power(np.array(adj.sum(1)), -0.5).flatten(), 0)
     adj = adj.dot(d).transpose().dot(d).tocsr()
@@ -231,9 +281,9 @@ def preprocess(raw_data, feats="convmol"):
     #One hot labels
     labels_one_hot = np.eye(num_classes)[labels.reshape(-1)]
     # print(f"labels_one_hot: {labels_one_hot}")
-    assert len(labels_one_hot) == len(form_one_shot(labels.tolist())), "assertion filed" #John assertion 1
-    # print(f"label after onehot: {labels_one_hot}")
-    labels_one_hot = form_one_shot(labels.tolist())
+    # assert len(labels_one_hot) == len(form_one_shot(labels.tolist())), "assertion filed" #John assertion 1
+    # # print(f"label after onehot: {labels_one_hot}")
+    # labels_one_hot = form_one_shot(labels.tolist())
     if feats == "weave":
         featurizer = WeaveFeaturizer()
     elif feats == "convmol":
@@ -259,7 +309,8 @@ def preprocess(raw_data, feats="convmol"):
     # assert False, "debugging"
     #Normalize Adjacency Mats
     norm_adjs = [preprocess_adj(A) for A in adjs]
-
+    # _ = preprocess_adj(adjs[0])
+    # assert False, "debug preprocess adj"
     return {'labels_one_hot': labels_one_hot,
             'node_features': node_features,
             'adjs': adjs,
@@ -322,8 +373,8 @@ def build_gcn(config):
     second_output = dense(128)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([second_input, first_output]))
     third_output = dense(64)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([third_input, second_output]))
     logits = dense(2)(Lambda(lambda y: K.squeeze(y, 1))(Lambda(lambda x: K.tf.reduce_mean(x, axis=1, keepdims=True))(third_output)))
-    fina_output = Softmax()(logits)
-    model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=fina_output)
+    final_output = Softmax()(logits)
+    model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=final_output)
 
     if exp_method_name =='GCAM':
         # node mask
@@ -378,6 +429,7 @@ def build_gcn(config):
         edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
     model.compile(optimizer=Adam(lr=0.001),
                   loss=custom_loss(['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
+    return model
 
 def keras_gcn(config):
     """
@@ -470,8 +522,7 @@ def keras_gcn(config):
         edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
     model.compile(optimizer=Adam(lr=learning_rate),
                   loss=custom_loss(reg_list, logits, Adj, node_mask, edge_mask, M, E))
-    build_gcn(config)
-    assert False, "debugging"
+    # build_gcn(config)
     # print('node_explanation:', node_explanation[0])
     return model
 
@@ -599,13 +650,14 @@ def ebMoleculeEdge(activations, A, bottomP):
     return mask_adj
 
 
-def gcn_train(adj_matrix,normalised_adj,one_hot_label,features,model, data, num_epochs, training_data, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
+def train_gcn(adj_matrix,normalised_adj,one_hot_label,features,model, data, num_epochs, training_data, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
     total_loss = []
     best = 0
     for epoch in range(num_epochs):
         epoch_loss = []
         #Train
         permutation_set = np.random.permutation(training_data)
+        print(f"permutation_set: {permutation_set}")
         for ri in permutation_set:
 
             if ri in human_data['train']:
@@ -627,21 +679,16 @@ def gcn_train(adj_matrix,normalised_adj,one_hot_label,features,model, data, num_
         # edge_mae = val_eval["edge_mae"]
 
         # choose best model base on AUC
-        if metric == 'AUC':
-            if val_auc>best:
-                model.save(save_path)
-                best = val_auc
-                print('Model saved!')
-        elif metric == 'ACC':
-            if val_acc>best:
-                model.save(save_path)
-                best = val_acc
-                print('Model saved!')
+        # if metric == 'AUC':
+        if val_auc>best:
+            model.save(save_path)
+            best = val_auc
+            print('Model saved!')
 
         print("Epoch: {}, Train Loss: {:.3f}, Val ACC: {:.3f}, AUC: {:.3f}.".format(epoch, mean_train_loss, val_acc, val_auc))
         # print("Human evaluation: node MSE: {:.3f}, node MAE: {:.3f}, edge MSE: {:.3f}, edge MAE: {:.3f}.".format(node_mse, node_mae, edge_mse, edge_mae))
         total_loss.extend(epoch_loss)
-
+    assert False, "debugging"
     return total_loss, best
 
 
@@ -685,6 +732,67 @@ def partition_train_val_test(smiles, dataset):
             "test_inds": test_inds}
 
 
+
+def gcn_train(model, data, num_epochs, train_inds, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
+    Adjs = data['adjs']
+    norm_adjs = data['norm_adjs']
+    labels_one_hot = data['labels_one_hot']
+
+    node_features = data['node_features']
+    total_loss = []
+    best = 0
+    for epoch in range(num_epochs):
+        epoch_loss = []
+        #Train
+        rand_inds = np.random.permutation(train_inds)
+        for ri in rand_inds:
+
+            Adj = Adjs[ri][np.newaxis, :, :]
+            A_arr = norm_adjs[ri][np.newaxis, :, :]
+            X_arr = node_features[ri][np.newaxis, :, :]
+            Y_arr = labels_one_hot[ri][np.newaxis, :]
+
+            if ri in human_data['train']:
+                M = np.array(human_data['train'][ri]['node_importance'])[np.newaxis, :, np.newaxis]
+                E = np.array(human_data['train'][ri]['edge_importance'])[np.newaxis, :, :]
+            else:
+                N = Adj.shape[1]
+                M = np.zeros((1, N, 1))
+                E = np.zeros((1, N, N))
+
+            sample_loss = model.train_on_batch(x=[M, E, Adj, A_arr, A_arr, A_arr, X_arr], y=Y_arr, )
+            epoch_loss.append(sample_loss)
+            # print(sample_loss)
+
+        #Eval
+        val_eval = evaluate(model, data, val_inds, human_data['val'], exp_method= exp_method, human_eval=False)
+
+        mean_train_loss = sum(epoch_loss) / len(epoch_loss)
+        val_acc = val_eval['accuracy']
+        val_auc = val_eval['roc_auc']
+        # node_mse = val_eval["node_mse"]
+        # node_mae = val_eval["node_mae"]
+        # edge_mse = val_eval["edge_mse"]
+        # edge_mae = val_eval["edge_mae"]
+
+        # choose best model base on AUC
+        if metric == 'AUC':
+            if val_auc>best:
+                model.save(save_path)
+                best = val_auc
+                print('Model saved!')
+        elif metric == 'ACC':
+            if val_acc>best:
+                model.save(save_path)
+                best = val_acc
+                print('Model saved!')
+
+        print("Epoch: {}, Train Loss: {:.3f}, Val ACC: {:.3f}, AUC: {:.3f}.".format(epoch, mean_train_loss, val_acc, val_auc))
+        # print("Human evaluation: node MSE: {:.3f}, node MAE: {:.3f}, edge MSE: {:.3f}, edge MAE: {:.3f}.".format(node_mse, node_mae, edge_mse, edge_mae))
+        total_loss.extend(epoch_loss)
+
+    return total_loss, 
+
 def run_train(config, data, inds, save_path, human_data, metric='AUC', train=True):
     """
     Sets splitter. Partitions train/val/test.
@@ -697,18 +805,21 @@ def run_train(config, data, inds, save_path, human_data, metric='AUC', train=Tru
 
     if train:
         model = keras_gcn(config)
+        # model = build_gcn(config)
         loss, accuracy = gcn_train(model, data, config['num_epochs'], train_inds, val_inds, save_path, human_data, metric=metric, exp_method = config['exp_method'])
+    assert False, "debugging"
+    # model = keras_gcn(config)
+    # model.load_weights(save_path)
 
-    model = keras_gcn(config)
-    model.load_weights(save_path)
+    # train_eval = evaluate(model, data, train_inds, human_data['train'], config['exp_method'], human_eval=True)
+    # test_eval = evaluate(model, data, test_inds, human_data['test'], config['exp_method'], human_eval=True)
+    # val_eval = evaluate(model, data, val_inds, human_data['val'], config['exp_method'], human_eval=True)
 
-    train_eval = evaluate(model, data, train_inds, human_data['train'], config['exp_method'], human_eval=True)
-    test_eval = evaluate(model, data, test_inds, human_data['test'], config['exp_method'], human_eval=True)
-    val_eval = evaluate(model, data, val_inds, human_data['val'], config['exp_method'], human_eval=True)
-
-    return model, {"train": train_eval,
-                   "test": test_eval,
-                   "val": val_eval}
+    # return model, {"train": train_eval,
+    #                "test": test_eval,
+    #                "val": val_eval}
+    
+    
 
 
 
