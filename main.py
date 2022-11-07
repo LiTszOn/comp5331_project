@@ -29,17 +29,17 @@ config = config.load_config("BBBP")
 human_data = {"train": dict4train,
             "val": dict4test,
             "test":dict4val}
-# data = {'labels_one_hot': labels_one_hot,
-#             'node_features': data_original['node_features'],
-#             'adjs': edges,
-#             'norm_adjs': data_original['norm_adjs']}
+data = {'labels_one_hot': labels_one_hot,
+            'node_features': molecules_features,
+            'adjs': edges,
+            'norm_adjs': data_original['norm_adjs']}
 model_out_fn = "GNES_{}.h5".format("BBBP".lower())
 save_path = os.path.join(config["saved_models_dir"], model_out_fn)
 # train_inds = train_partition
 # val_inds = val_partition
 
 model_original = utils.keras_gcn(config)
-loss, accuracy = utils.gcn_train(model_original, data_original, config['num_epochs'], train_inds_original, val_inds_original, save_path, human_data_original)
+loss, accuracy = utils.gcn_train(model, data_original, config['num_epochs'], train_partition, val_partition, save_path, human_data)
 
 # model = keras_gcn(config)
 # model.load_weights(save_path)
