@@ -713,38 +713,46 @@ def partition_train_val_test(smiles, dataset):
             "val_inds": val_inds,
             "test_inds": test_inds}
 
+def matrix_to_array(matrix):
+    matrix_list = []
+    for row in matrix:
+        row_array = np.array(row)
+        matrix_list.append(row_array)
+    matrix_array = np.array([np.array(matrix_list)])
+    return matrix_array
 
-
-def gcn_train(model, data, num_epochs, train_inds, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
-    Adjs = data['adjs']
-    norm_adjs = data['norm_adjs']
+def gcn_train(model, data, num_epochs, trainSet, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
+    #Remark: adjs and norm_adjs are list of square matrix
+    #Features has 75 dimension
+    adjMatrix = data['adjs']
+    normMatrix = data['norm_adjs']
     labels_one_hot = data['labels_one_hot']
 
     node_features = data['node_features']
     total_loss = []
     best = 0
+    #For each epoch, the training data is randomized once
     for epoch in range(num_epochs):
         epoch_loss = []
-        #Train
-        rand_inds = np.random.permutation(train_inds)
-        for ri in rand_inds:
+        randomDatas = np.random.permutation(trainSet)
+        for currentData in randomDatas:
+            #currentMatrix is adjacency matrix of currrent graph
+            currentMatrix = np.array([adjMatrix[currentData]])
+            currentNormMatrix = np.array([normMatrix[currentData]])
+            currentFeatures = np.array([node_features[currentData]])
+            currentTarget = np.array([labels_one_hot[currentData]])
 
-            Adj = Adjs[ri][np.newaxis, :, :]
-            A_arr = norm_adjs[ri][np.newaxis, :, :]
-            X_arr = node_features[ri][np.newaxis, :, :]
-            Y_arr = labels_one_hot[ri][np.newaxis, :]
-
-            if ri in human_data['train']:
-                M = np.array(human_data['train'][ri]['node_importance'])[np.newaxis, :, np.newaxis]
-                E = np.array(human_data['train'][ri]['edge_importance'])[np.newaxis, :, :]
+            if currentData in human_data['train']:
+                nodeWeight = matrix_to_array(human_data['train'][currentData]['node_importance'])
+                edgeWeight = matrix_to_array(human_data['train'][currentData]['edge_importance'])
             else:
-                N = Adj.shape[1]
-                M = np.zeros((1, N, 1))
-                E = np.zeros((1, N, N))
+                num_nodes = currentMatrix.shape[1]
+                nodeWeight = np.zeros((1, num_nodes, 1))
+                edgeWeight = np.zeros((1, num_nodes, num_nodes))
 
-            sample_loss = model.train_on_batch(x=[M, E, Adj, A_arr, A_arr, A_arr, X_arr], y=Y_arr, )
+            sample_loss = model.train_on_batch(x=[nodeWeight, edgeWeight, currentMatrix, currentNormMatrix, currentNormMatrix, currentNormMatrix, currentFeatures], y=currentTarget, )
             epoch_loss.append(sample_loss)
-            # print(sample_loss)
+            #print(sample_loss)
 
         #Eval
         val_eval = evaluate(model, data, val_inds, human_data['val'], exp_method= exp_method, human_eval=False)
@@ -773,7 +781,7 @@ def gcn_train(model, data, num_epochs, train_inds, val_inds, save_path, human_da
         # print("Human evaluation: node MSE: {:.3f}, node MAE: {:.3f}, edge MSE: {:.3f}, edge MAE: {:.3f}.".format(node_mse, node_mae, edge_mse, edge_mae))
         total_loss.extend(epoch_loss)
 
-    return total_loss, 
+    return total_loss, best
 
 def run_train(config, data, inds, save_path, human_data, metric='AUC', train=True):
     """
