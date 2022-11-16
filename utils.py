@@ -803,17 +803,16 @@ def run_train(config, data, inds, save_path, human_data, metric='AUC', train=Tru
         model = keras_gcn(config)
         # model = build_gcn(config)
         loss, accuracy = gcn_train(model, data, config['num_epochs'], train_inds, val_inds, save_path, human_data, metric=metric, exp_method = config['exp_method'])
-    assert False, "debugging"
-    # model = keras_gcn(config)
-    # model.load_weights(save_path)
+    model = keras_gcn(config)
+    model.load_weights(save_path)
 
-    # train_eval = evaluate(model, data, train_inds, human_data['train'], config['exp_method'], human_eval=True)
-    # test_eval = evaluate(model, data, test_inds, human_data['test'], config['exp_method'], human_eval=True)
-    # val_eval = evaluate(model, data, val_inds, human_data['val'], config['exp_method'], human_eval=True)
+    train_eval = evaluate(model, data, train_inds, human_data['train'], config['exp_method'], human_eval=True)
+    test_eval = evaluate(model, data, test_inds, human_data['test'], config['exp_method'], human_eval=True)
+    val_eval = evaluate(model, data, val_inds, human_data['val'], config['exp_method'], human_eval=True)
 
-    # return model, {"train": train_eval,
-    #                "test": test_eval,
-    #                "val": val_eval}
+    return model, {"train": train_eval,
+                    "test": test_eval,
+                   "val": val_eval}
     
     
 
@@ -955,4 +954,11 @@ def occlude_and_predict(Adj, X_arr, A_arr, masks, thresh, model):
     y_hat_occ = prob_occ.argmax()
     return y_hat_occ
 
-
+def plot_roc_curve(split, metrics):
+    fpr = metrics['%s'%split]['roc_curve'][0]
+    tpr = metrics['%s'%split]['roc_curve'][1]
+    plt.title("ROC curve") 
+    plt.xlabel("False Positve Rate") 
+    plt.ylabel("Precision") 
+    plt.plot(fpr,tpr) 
+    plt.savefig("roc_curve_%s.png"%split)

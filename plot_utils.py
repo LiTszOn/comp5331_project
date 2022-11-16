@@ -17,7 +17,7 @@ def create_figs(results):
             node_weights = rr["weights"]
             edge_weights = rr["edge_weights"]
             f = draw_chem_activations(smile=smile, index=index, node_weights=node_weights, edge_weights=edge_weights, colorbar=False,
-                                      node_radius=0.03, edge_radius=0.01, colormap="Blues", size=(300, 300),
+                                      node_radius=0.03, edge_radius=0.01, colormap="Greens", size=(300, 300),
                                       vmax=1.0, vmin=0.0, save_path=rr["method"])
             figs_.append(f)
         figs.append(figs_)
@@ -28,7 +28,7 @@ def create_figs(results):
             smile = rr["smile"]
             index = rr["index"]
             f = draw_chem_activations(smile=smile, index=index, node_weights=None, edge_weights=None, colorbar=False,
-                                      node_radius=0.03, edge_radius=0.01, colormap="Blues", size=(300, 300),
+                                      node_radius=0.03, edge_radius=0.01, colormap="Greens", size=(300, 300),
                                       vmax=1.0, vmin=0.0, save_path='original')
             figs_.append(f)
         figs.append(figs_)

@@ -6,7 +6,7 @@ sys.path.append("../")
 
 from config import load_config
 from utils import (load_data, preprocess, run_train, load_human_data,
-                   partition_train_val_test, print_eval_avg,load_manual_annotation,partition_dataset)
+                   partition_train_val_test, print_eval_avg,load_manual_annotation,partition_dataset, plot_roc_curve)
 
 # dataset
 dataset = "BBBP"
@@ -39,14 +39,17 @@ for i in range(N):
     inds = partition_train_val_test(raw_data["smiles"], dataset)
     train_partition, val_partition, test_partition = partition_dataset(raw_data["smiles"])
     model, eval_metrics = run_train(config, data, inds, save_path, human_data, train=train_flag)
-#     eval_results[i] = eval_metrics
-#     break
+    eval_results[i] = eval_metrics
+    #break
 # # Evaluate
 # print(dataset + "\n")
 
-# for metric in ["roc_auc", "avg_precision", "node_mse", "node_mae", "edge_mse", "edge_mae"]:
-#     print(metric)
-#     for split in ["train", "val  ", "test "]:
-#         res = print_eval_avg(eval_results, split.strip(), metric)
-#         print(split + " " + res)
-#     print()
+for metric in ["roc_auc", "avg_precision", "node_mse", "node_mae", "edge_mse", "edge_mae"]:
+    print(metric)
+    for split in ["train", "val  ", "test "]:
+        res = print_eval_avg(eval_results, split.strip(), metric)
+        print(split + " " + res)
+    print()
+
+for split in ["test"]:
+    plot_roc_curve(split, eval_metrics)
