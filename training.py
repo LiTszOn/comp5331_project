@@ -6,6 +6,7 @@ from keras.models import Model
 from keras.layers import Input, Dense, Softmax, Lambda
 from keras import backend as K
 import utils
+from keras.initializers import RandomNormal
 def partition_dataset(smiles):
     #can we use s
     # print(f"smiles is {smiles}")
@@ -41,11 +42,20 @@ def build_gcn(exp_method_name="GCAM"):
     edge_matrix = Input(shape=(1, None, None), batch_shape=(1, None, None))
     adj_matrix = Input(shape=(1, None, None), batch_shape=(1, None, None))
 
+    initial_weight_first = RandomNormal(mean=0.0, stddev=0.1)
+    initial_bias_first = RandomNormal(mean=0.0, stddev=0.1)
+    initial_weight_second = RandomNormal(mean=0.0, stddev=0.1)
+    initial_bias_second = RandomNormal(mean=0.0, stddev=0.1)
+    initial_weight_third = RandomNormal(mean=0.0, stddev=0.1)
+    initial_bias_third = RandomNormal(mean=0.0, stddev=0.1)
+    initial_weight_logit = RandomNormal(mean=0.0, stddev=0.1)
+    initial_bias_logit = RandomNormal(mean=0.0, stddev=0.1)
+        
     # h1 = dense(L1)(K.tf.matmul(A_batch1, X_batch))
-    first_output = Dense(256, activation='relu')(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([first_input, last_input]))
-    second_output = Dense(128, activation='relu')(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([second_input, first_output]))
-    third_output = Dense(64, activation='relu')(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([third_input, second_output]))
-    logits = Dense(2, activation='relu')(Lambda(lambda y: K.squeeze(y, 1))(Lambda(lambda x: K.tf.reduce_mean(x, axis=1, keepdims=True))(third_output)))
+    first_output = Dense(256, activation='relu', kernel_initializer=initial_weight_first, bias_initializer=initial_bias_first, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([first_input, last_input]))
+    second_output = Dense(128, activation='relu', kernel_initializer=initial_weight_second, bias_initializer=initial_bias_second, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([second_input, first_output]))
+    third_output = Dense(64, activation='relu', kernel_initializer=initial_weight_third, bias_initializer=initial_bias_third, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([third_input, second_output]))
+    logits = Dense(2, activation='linear', kernel_initializer=initial_weight_logit, bias_initializer=initial_bias_logit, use_bias=True)(Lambda(lambda y: K.squeeze(y, 1))(Lambda(lambda x: K.tf.reduce_mean(x, axis=1, keepdims=True))(third_output)))
     fina_output = Softmax()(logits)
     model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=fina_output)
 

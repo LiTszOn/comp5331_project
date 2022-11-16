@@ -329,18 +329,30 @@ def build_gcn(config):
     """
     Keras GCN for graph classification
     """
-    # d = config['d']
-    # L1 = config['L1']
-    # L2 = config['L2']
-    # L3 = config['L3']
-    # N = config['N']
-    # print(f"N is {N}")
-    # num_classes = config['num_classes']
-    # print(f"batch_size is {batch_size}")
+    d = config['d']
+    init_stddev = config['init_stddev']
+    L1 = config['L1']
+    L2 = config['L2']
+    L3 = config['L3']
+    N = config['N']
+    num_classes = config['num_classes']
+    batch_size = config['batch_size']
+    reg_list = config['reg']
     exp_method_name = config['exp_method']
+    learning_rate = config['learning_rate']
 
     # currently the implementation of the pipeline only support batch_size = 1
-    # assert batch_size == 1, "Batch size != 1 Not Implemented!"
+    assert batch_size == 1, "Batch size != 1 Not Implemented!"
+
+    # adjacency matrix, for regularization propose
+    # M = Input(shape=(batch_size, N, 1), batch_shape=(batch_size, N, 1))
+    # E = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
+    # Adj = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
+    # A_batch1 = Input(shape=(batch_size,N,N), batch_shape=(batch_size,N,N))
+    # A_batch2 = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
+    # A_batch3 = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
+    # X_batch = Input(shape=(batch_size,N,d), batch_shape=(batch_size,N,d))
+    # Y = Input(shape=(batch_size, num_classes), batch_shape=(batch_size, num_classes))
 
     first_input = Input(shape=(1,None,None), batch_shape=(1,None,None))
     second_input = Input(shape=(1, None, None), batch_shape=(1, None, None))
@@ -350,14 +362,26 @@ def build_gcn(config):
     edge_matrix = Input(shape=(1, None, None), batch_shape=(1, None, None))
     adj_matrix = Input(shape=(1, None, None), batch_shape=(1, None, None))
 
-    # h1 = dense(L1)(K.tf.matmul(A_batch1, X_batch))
-    first_output = dense(256)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([first_input, last_input]))
-    second_output = dense(128)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([second_input, first_output]))
-    third_output = dense(64)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([third_input, second_output]))
-    logits = dense(2)(Lambda(lambda y: K.squeeze(y, 1))(Lambda(lambda x: K.tf.reduce_mean(x, axis=1, keepdims=True))(third_output)))
-    final_output = Softmax()(logits)
-    model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=final_output)
+    initial_weight_first = RandomNormal(mean=0.0, stddev=0.1)
+    initial_bias_first = RandomNormal(mean=0.0, stddev=0.1)
+    initial_weight_second = RandomNormal(mean=0.0, stddev=0.1)
+    initial_bias_second = RandomNormal(mean=0.0, stddev=0.1)
+    initial_weight_third = RandomNormal(mean=0.0, stddev=0.1)
+    initial_bias_third = RandomNormal(mean=0.0, stddev=0.1)
+    initial_weight_logit = RandomNormal(mean=0.0, stddev=0.1)
+    initial_bias_logit = RandomNormal(mean=0.0, stddev=0.1)
 
+    first_output = Dense(256, activation='relu', kernel_initializer=initial_weight_first, bias_initializer=initial_bias_first, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([first_input, last_input]))
+    second_output = Dense(128, activation='relu', kernel_initializer=initial_weight_second, bias_initializer=initial_bias_second, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([second_input, first_output]))
+    third_output = Dense(64, activation='relu', kernel_initializer=initial_weight_third, bias_initializer=initial_bias_third, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([third_input, second_output]))
+    gap = Lambda(GAP)(third_output)
+    gap=  Lambda(lambda y: K.squeeze(y, 1))(gap)
+    logits = dense(num_classes, activation='linear')(gap)
+    Y_hat = Softmax()(logits)
+    model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=Y_hat)
+    # adj_matrix = Adj
+    # main_matrix = M
+    # edge_matrix = E
     if exp_method_name =='GCAM':
         # node mask
         maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
@@ -632,46 +656,46 @@ def ebMoleculeEdge(activations, A, bottomP):
     return mask_adj
 
 
-def train_gcn(adj_matrix,normalised_adj,one_hot_label,features,model, data, num_epochs, training_data, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
-    total_loss = []
-    best = 0
-    for epoch in range(num_epochs):
-        epoch_loss = []
-        #Train
-        permutation_set = np.random.permutation(training_data)
-        print(f"permutation_set: {permutation_set}")
-        for ri in permutation_set:
+# def train_gcn(adj_matrix,normalised_adj,one_hot_label,features,model, data, num_epochs, training_data, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
+#     total_loss = []
+#     best = 0
+#     for epoch in range(num_epochs):
+#         epoch_loss = []
+#         #Train
+#         permutation_set = np.random.permutation(training_data)
+#         print(f"permutation_set: {permutation_set}")
+#         for ri in permutation_set:
 
-            if ri in human_data['train']:
-                sample_loss = model.train_on_batch(x=[np.array(human_data['train'][ri]['node_importance'])[np.newaxis, :, np.newaxis], np.array(human_data['train'][ri]['edge_importance'])[np.newaxis, :, :], adj_matrix[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], features[ri][np.newaxis, :, :]], y=one_hot_label[ri][np.newaxis, :], )
-            else:
-                sample_loss = model.train_on_batch(x=[np.zeros((1, adj_matrix.shape[1], 1)), np.zeros((1, adj_matrix.shape[1], adj_matrix.shape[1])), adj_matrix[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], features[ri][np.newaxis, :, :]], y=one_hot_label[ri][np.newaxis, :], )
-            epoch_loss.append(sample_loss)
-            # print(sample_loss)
+#             if ri in human_data['train']:
+#                 sample_loss = model.train_on_batch(x=[np.array(human_data['train'][ri]['node_importance'])[np.newaxis, :, np.newaxis], np.array(human_data['train'][ri]['edge_importance'])[np.newaxis, :, :], adj_matrix[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], features[ri][np.newaxis, :, :]], y=one_hot_label[ri][np.newaxis, :], )
+#             else:
+#                 sample_loss = model.train_on_batch(x=[np.zeros((1, adj_matrix.shape[1], 1)), np.zeros((1, adj_matrix.shape[1], adj_matrix.shape[1])), adj_matrix[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], features[ri][np.newaxis, :, :]], y=one_hot_label[ri][np.newaxis, :], )
+#             epoch_loss.append(sample_loss)
+#             # print(sample_loss)
 
-        #Eval
-        val_eval = evaluate(model, data, val_inds, human_data['val'], exp_method= exp_method, human_eval=False)
+#         #Eval
+#         val_eval = evaluate(model, data, val_inds, human_data['val'], exp_method= exp_method, human_eval=False)
 
-        mean_train_loss = sum(epoch_loss) / len(epoch_loss)
-        val_acc = val_eval['accuracy']
-        val_auc = val_eval['roc_auc']
-        # node_mse = val_eval["node_mse"]
-        # node_mae = val_eval["node_mae"]
-        # edge_mse = val_eval["edge_mse"]
-        # edge_mae = val_eval["edge_mae"]
+#         mean_train_loss = sum(epoch_loss) / len(epoch_loss)
+#         val_acc = val_eval['accuracy']
+#         val_auc = val_eval['roc_auc']
+#         # node_mse = val_eval["node_mse"]
+#         # node_mae = val_eval["node_mae"]
+#         # edge_mse = val_eval["edge_mse"]
+#         # edge_mae = val_eval["edge_mae"]
 
-        # choose best model base on AUC
-        # if metric == 'AUC':
-        if val_auc>best:
-            model.save(save_path)
-            best = val_auc
-            print('Model saved!')
+#         # choose best model base on AUC
+#         # if metric == 'AUC':
+#         if val_auc>best:
+#             model.save(save_path)
+#             best = val_auc
+#             print('Model saved!')
 
-        print("Epoch: {}, Train Loss: {:.3f}, Val ACC: {:.3f}, AUC: {:.3f}.".format(epoch, mean_train_loss, val_acc, val_auc))
-        # print("Human evaluation: node MSE: {:.3f}, node MAE: {:.3f}, edge MSE: {:.3f}, edge MAE: {:.3f}.".format(node_mse, node_mae, edge_mse, edge_mae))
-        total_loss.extend(epoch_loss)
-    assert False, "debugging"
-    return total_loss, best
+#         print("Epoch: {}, Train Loss: {:.3f}, Val ACC: {:.3f}, AUC: {:.3f}.".format(epoch, mean_train_loss, val_acc, val_auc))
+#         # print("Human evaluation: node MSE: {:.3f}, node MAE: {:.3f}, edge MSE: {:.3f}, edge MAE: {:.3f}.".format(node_mse, node_mae, edge_mse, edge_mae))
+#         total_loss.extend(epoch_loss)
+#     assert False, "debugging"
+#     return total_loss, best
 
 
 class MockDataset:
@@ -773,7 +797,7 @@ def gcn_train(model, data, num_epochs, train_inds, val_inds, save_path, human_da
         # print("Human evaluation: node MSE: {:.3f}, node MAE: {:.3f}, edge MSE: {:.3f}, edge MAE: {:.3f}.".format(node_mse, node_mae, edge_mse, edge_mae))
         total_loss.extend(epoch_loss)
 
-    return total_loss, 
+    return total_loss
 
 def run_train(config, data, inds, save_path, human_data, metric='AUC', train=True):
     """
