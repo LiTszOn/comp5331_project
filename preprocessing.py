@@ -12,7 +12,7 @@ def form_one_shot_feature(sorted_id):
         one_shot_label_list.append(raw_label_list)
     # print(f"np.array(one_shot_label_list): {np.array(one_shot_label_list)}")
     sorted_matrix = np.array(one_shot_label_list)
-    print(f"form_one_shot_feature's sorted_matrix: {sorted_matrix}")
+    # print(f"form_one_shot_feature's sorted_matrix: {sorted_matrix}")
     return sorted_matrix
 
 def process_features(molecules,vertices):
@@ -29,8 +29,8 @@ def process_features(molecules,vertices):
             row_index += 1
         sorted_dict = {k: v for k, v in sorted(row_to_row_sum_dict.items(), key=lambda item: item[1])}
         sorted_row_id = np.array(list(sorted_dict.keys()))
-        print(f"sorted_row_id is {sorted_row_id}")
-        print(f"sortind is {sortind}")
+        # print(f"sorted_row_id is {sorted_row_id}")
+        # print(f"sortind is {sortind}")
         # assert sorted_row_id.all() == sortind.all(), f"sorted_row_id ({sorted_row_id}) and sortind ({sortind}) not equal" #John assertion
         
         # number_of_ele_in_row = sorted_row_id.size
@@ -47,6 +47,8 @@ def process_features(molecules,vertices):
         # break
 
 def preprocess_adj(adj):
+    adj1 = sp.csr_matrix(adj)
+    
     adj = sp.csr_matrix(adj)
     adj_numpy = adj.toarray()
 
@@ -57,7 +59,7 @@ def preprocess_adj(adj):
         inner_matrix = [0 for j in range(adj_numpy[0].size)]
         inner_matrix[i] = 1
         identity_matrix.append(inner_matrix)
-    
+    adj1 = adj1 + sp.eye(adj1.shape[0])
     adj_numpy_after_adding_identity = adj_numpy + np.array(identity_matrix)
 
     sum_of_adj = []
@@ -75,8 +77,11 @@ def preprocess_adj(adj):
         multi_diagonal_matrix.append(zero_array)
 
     adj = adj.dot(d).transpose().dot(d).tocsr()
-    normalised_adj = np.multiply(np.multiply(adj,np.array(multi_diagonal_matrix)).T,multi_diagonal_matrix)
-
+    
+    # adj1 = normalize_adj(adj1, symmetric)
+    b = sp.diags(np.power(np.array(adj1.sum(1)), -1).flatten(), 0)
+    adj1 = adj1.dot(b).tocsr()
+    normalised_adj = adj1.toarray()
     return normalised_adj
 
 def form_one_shot(label_list): 

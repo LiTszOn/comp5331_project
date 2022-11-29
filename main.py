@@ -22,24 +22,24 @@ labels_one_hot,molecules_features,edges,normalise_edges = preprocessing.preproce
 
 # inds = partition_train_val_test(smiles, dataset)
 train_partition, val_partition, test_partition = training.partition_dataset(smiles)
-config_original = config.load_config("BBBP")
+# config_original = config.load_config("BBBP")
 model = training.build_gcn()
 
 ####original
 
-raw_data_original = utils.load_data(raw_data_file_path)
-data_original = utils.preprocess(raw_data_original)
-human_data_original = utils.load_human_data(config_original, "BBBP")
-print(f"original train_dict: {human_data_original['train']}")
-print(f"original test_dict: {human_data_original['test']}")
-print(f"original val_dict: {human_data_original['val']}")
-assert dict4train == human_data_original['train'], f"dict not equal {dict4train} vs {human_data_original['train']}"
-assert dict4test == human_data_original['test'], f"dict not equal {dict4test} vs {human_data_original['test']}"
-assert dict4val == human_data_original['val'], f"dict not equal {dict4val} vs {human_data_original['val']}"
-inds_original = utils.partition_train_val_test(raw_data_original["smiles"], "BBBP")
-train_inds_original = inds_original["train_inds"]
-val_inds_original = inds_original["val_inds"]
-test_inds_original = inds_original["test_inds"]
+# raw_data_original = utils.load_data(raw_data_file_path)
+# data_original = utils.preprocess(raw_data_original)
+# human_data_original = utils.load_human_data(config_original, "BBBP")
+# print(f"original train_dict: {human_data_original['train']}")
+# print(f"original test_dict: {human_data_original['test']}")
+# print(f"original val_dict: {human_data_original['val']}")
+# assert dict4train == human_data_original['train'], f"dict not equal {dict4train} vs {human_data_original['train']}"
+# assert dict4test == human_data_original['test'], f"dict not equal {dict4test} vs {human_data_original['test']}"
+# assert dict4val == human_data_original['val'], f"dict not equal {dict4val} vs {human_data_original['val']}"
+# inds_original = utils.partition_train_val_test(raw_data_original["smiles"], "BBBP")
+# train_inds_original = inds_original["train_inds"]
+# val_inds_original = inds_original["val_inds"]
+# test_inds_original = inds_original["test_inds"]
 config = config.load_config("BBBP")
 human_data = {"train": dict4train,
             "val": dict4val,
@@ -47,7 +47,7 @@ human_data = {"train": dict4train,
 data = {'labels_one_hot': labels_one_hot,
             'node_features': molecules_features,
             'adjs': edges,
-            # 'norm_adjs': normalise_edges}
+            # 'norm_adjs': data_original['norm_adjs']}
             'norm_adjs': normalise_edges}
 model_out_fn = "GNES_{}.h5".format("BBBP".lower())
 save_path = os.path.join(config["saved_models_dir"], model_out_fn)
@@ -56,10 +56,10 @@ save_path = os.path.join(config["saved_models_dir"], model_out_fn)
 
 # model_original = utils.keras_gcn(config)
 # model = utils.build_gcn(config)
-# loss = utils.gcn_train(model, data, config['num_epochs'], train_partition, val_partition, save_path, human_data)
+loss = utils.gcn_train(model, data, config['num_epochs'], train_partition, val_partition, save_path, human_data)
 
 # model = keras_gcn(training.build_gcn(config_original))
-model.load_weights(save_path)
+# model.load_weights(save_path)
 
 train_eval = utils.evaluate(model, data, train_partition, human_data['train'], config['exp_method'], human_eval=True)
 test_eval = utils.evaluate(model, data, test_partition, human_data['test'], config['exp_method'], human_eval=True)

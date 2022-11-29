@@ -47,7 +47,7 @@ def load_manual_annotation():
     dict4train = convert_human_data_to_dict("mask_data/BBBP_train.csv")
     dict4test = convert_human_data_to_dict("mask_data/BBBP_test.csv")
     dict4val = convert_human_data_to_dict("mask_data/BBBP_val.csv")
-    print(f"john's dict4val: {dict4val}")
+    # print(f"john's dict4val: {dict4val}")
     return dict4train,dict4test,dict4val
     # mask_data
 
@@ -90,7 +90,7 @@ def load_human_data(config, dataset):
     test_fp = os.path.join(base_fp, dataset+'_test.csv')
     test_data = pd.read_csv(test_fp)
     test_dict = read_human_data_from_pd (test_data)
-    print(f"original train_dict: {train_dict}")
+    # print(f"original train_dict: {train_dict}")
     return {"train": train_dict,
             "val": val_dict,
             "test":test_dict}
