@@ -63,7 +63,7 @@ num_classes = data['labels_one_hot'].shape[1]
 # val_inds = inds["val_inds"]
 # test_inds = inds["test_inds"]
 
-viz_data_inds = [73, 148, 180, 236, 345, 487, 567]
+viz_data_inds = [628, 593, 492]
 viz_smiles = smiles[viz_data_inds].tolist()
 
 smile2index={}
@@ -120,7 +120,7 @@ for i in range(N):
                  "%.2f" % prob.max(),  # probabilistic softmax output
                  "%s" % label_to_class_name[y_hat]  # predicted label
                  ))
-
+    print(text)
     results_ = []
     for name, method in zip(method_names, methods):
         if name not in mask_dict:
