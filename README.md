@@ -11,3 +11,4 @@
 | preprocessing.py | Preprocess the loaded dataset |
 | training.py | construct and train a GNN |
 | explanation_methods.py | Optional explanation methods: GradCAM & EB |
+| loss_function.py | Loss function of GNES, including inference accuracy loss, explanability loss, and regularization loss |
