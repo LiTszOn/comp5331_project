@@ -1,7 +1,11 @@
-# How to run
+# Install
+* Python 3.7.9
+* Install related packages by `pip install requirements.txt`
 
-1. Install related packages by `pip install requirements.txt`
-2. `python main.py`
+# Run
+```
+python main.py
+```
 
 # Description of each source file
 | Source file | Description |
