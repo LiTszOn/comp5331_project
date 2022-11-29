@@ -9,11 +9,7 @@ def convert_human_data_to_dict(file_path):
     all_lines = f.readlines()
     # print(f"all_lines: {all_lines}")
     for each_line in all_lines[1:]:
-<<<<<<< HEAD
         # print(f"each line: {each_line}")
-=======
-        #print(f"each line: {each_line}")
->>>>>>> cc007c61f5a95d0a2512e6e313f227aa82171aff
         if "skipped" not in each_line:
             value = "\"{\"\"" + each_line.split(",\"{\"\"")[1]
             row_id,img_id,state = each_line.split(",\"{\"\"")[0].split(",")

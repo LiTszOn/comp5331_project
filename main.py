@@ -72,4 +72,4 @@ for metric in ["roc_auc", "avg_precision", "node_mse", "node_mae", "edge_mse", "
     for split in ["train", "val  ", "test "]:
         res = utils.print_eval_avg(eval_metric, split.strip(), metric)
         print(split + " " + res)
-    print()
+    # print()
