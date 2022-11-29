@@ -7,6 +7,11 @@ from keras.layers import Input, Dense, Softmax, Lambda
 from keras import backend as K
 import utils
 from keras.initializers import RandomNormal
+
+
+import loss_function
+
+
 def partition_dataset(smiles):
     #can we use s
     # print(f"smiles is {smiles}")
@@ -110,34 +115,9 @@ def build_gcn(exp_method_name="GCAM"):
         maskh0_edge = utils.getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
         maskh1_edge = utils.getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
         edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
+    # model.compile(optimizer=Adam(lr=0.001),
+    #               loss=custom_loss(['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
+    print("------------- model.compile ------------------")
     model.compile(optimizer=Adam(lr=0.001),
-                  loss=custom_loss(['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
+                  loss=loss_function.call_loss_function_of_GNES(K, ['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
     return model
-    
-def custom_loss(reg_list, logits, A, node_mask, edge_mask, M, E):
-    # Create a loss function that adds the MSE loss to the mean of all squared activations of a specific layer
-    def loss(y_true, y_pred):
-
-        loss=K.mean(K.binary_crossentropy(y_true, logits, from_logits=True), axis=-1)
-        node_s = K.abs(K.gather(node_mask, K.argmax(y_true, axis=-1)))
-        edge_s = K.abs(K.gather(edge_mask, K.argmax(y_true, axis=-1)))
-        ones = K.ones(K.shape(node_s))
-        edge_s = K.squeeze(edge_s * A, axis=0)
-
-        if 'sparsity' in reg_list:
-            print('adding sparsity regularization')
-            loss += 0.001 * (K.mean(node_s) + K.mean(edge_s))
-        if 'consistency' in reg_list:
-            print('adding consistency regularization')
-            pair_diff = K.tf.matrix_band_part(node_s[..., None] - K.tf.transpose(node_s[..., None]), 0, -1)
-            # we use below term to avoid trivial solution when minimizing consistency loss (i.e. edge_s = 0)
-            conn = - K.mean(K.log(K.tf.matmul(edge_s, K.transpose(ones)) + 1e-6))
-            loss += 0.1 * (K.mean(edge_s * K.square(pair_diff)) + conn)
-
-        # human node importance supervision
-        loss += 1 * K.max(M) * K.mean(K.abs(node_s - M))
-        # human edge importance supervision
-        loss += 1 * K.max(E) * K.mean(K.abs(edge_s - E))
-        return loss
-    # Return a function
-    return loss
