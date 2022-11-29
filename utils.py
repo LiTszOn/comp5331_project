@@ -21,7 +21,8 @@ from deepchem.splits import RandomSplitter, ScaffoldSplitter
 from chainer_chemistry.dataset.parsers.csv_file_parser import CSVFileParser
 from chainer_chemistry.dataset.preprocessors.nfp_preprocessor import NFPPreprocessor
 
-from methods import (CAM, GradCAM, GradCAMAvg, Gradient, EB, cEB)
+# from methods import (CAM, GradCAM, GradCAMAvg, Gradient, EB, cEB)
+from explanation_methods import (GradCAM, EB)
 
 from sklearn.metrics import (accuracy_score, precision_score, roc_auc_score,
                              recall_score, auc, average_precision_score,
