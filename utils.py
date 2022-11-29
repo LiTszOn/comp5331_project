@@ -29,6 +29,8 @@ from sklearn.metrics import (accuracy_score, precision_score, roc_auc_score,
 import pandas as pd
 import json
 
+import loss_function
+
 def load_data(csv_fp, labels_col="p_np", smiles_col="smiles"):
     """
     Load BBBP data
@@ -526,10 +528,9 @@ def keras_gcn(config):
         maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
         maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
         edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
+    print("------------- model.compile ------------------")
     model.compile(optimizer=Adam(lr=learning_rate),
-                  loss=custom_loss(reg_list, logits, Adj, node_mask, edge_mask, M, E))
-    # build_gcn(config)
-    # print('node_explanation:', node_explanation[0])
+                  loss=loss_function.call_loss_function_of_GNES(K, reg_list, logits, Adj, node_mask, edge_mask, M, E))
     return model
 
 

@@ -29,9 +29,9 @@ def convert_human_data_to_dict(file_path):
     return data_dict
 
 def load_manual_annotation():
-    dict4train = convert_human_data_to_dict("mask_data/BBBP_train.csv")
-    dict4test = convert_human_data_to_dict("mask_data/BBBP_test.csv")
-    dict4val = convert_human_data_to_dict("mask_data/BBBP_val.csv")
+    dict4train = convert_human_data_to_dict("human_mask/BBBP_train.csv")
+    dict4test = convert_human_data_to_dict("human_mask/BBBP_test.csv")
+    dict4val = convert_human_data_to_dict("human_mask/BBBP_val.csv")
     # print(f"john's dict4train: {dict4train}")
     # print(f"john's dict4test: {dict4test}")
     # print(f"john's dict4val: {dict4val}")
