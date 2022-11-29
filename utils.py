@@ -840,10 +840,6 @@ def run_train(config, data, inds, save_path, human_data, metric='AUC', train=Tru
                     "test": test_eval,
                    "val": val_eval}
     
-    
-
-
-
 def print_evals(eval_dict):
     print("Accuracy: {0:.3f}".format(eval_dict["accuracy"]))
     print("Precision: {0:.3f}".format(eval_dict["precision"]))
@@ -906,8 +902,6 @@ def human_evaluate(model, data, inds, human_data, exp_method):
             "node_mae":np.mean(K.eval(K.stack(node_mae))),
             "edge_mae":np.mean(K.eval(K.stack(edge_mae))),
             "edge_mse":np.mean(K.eval(K.stack(edge_mse)))}
-
-
 
 def evaluate(model, data, inds, human_data, exp_method = 'GCAM', human_eval=False, thresh=0.5):
     t_test = time.time()

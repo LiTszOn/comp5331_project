@@ -7,43 +7,28 @@ import keras.backend as K
 
 class GradCAM:
     def __init__(self, model):
-
-        maskh0=self.getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
-        maskh1=self.getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
-
-        maskh0_edge=self.getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
-        maskh1_edge=self.getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
-
-        getMasks=K.function([model.inputs[0],model.inputs[1],model.inputs[2], model.layers[0].input , model.layers[3].input, model.layers[6].input, model.layers[1].input],[maskh0,maskh1])
-        getMasks_edge = K.function([model.inputs[0],model.inputs[1],model.inputs[2], model.layers[0].input , model.layers[3].input, model.layers[6].input, model.layers[1].input], [maskh0_edge, maskh1_edge])
-        self.getMasks = getMasks
-        self.getMasks_edge = getMasks_edge
+        # Node
+        self.getMasks = K.function([model.inputs[0], model.inputs[1], model.inputs[2], 
+                                    model.layers[0].input, model.layers[3].input, model.layers[6].input, model.layers[1].input],
+                                    [self.getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output), self.getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)])
+        # Edge
+        self.getMasks_edge = K.function([model.inputs[0], model.inputs[1], model.inputs[2], 
+                                        model.layers[0].input, model.layers[3].input, model.layers[6].input, model.layers[1].input], 
+                                        [self.getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input), self.getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)])
       
-    def getGradCamMask(self,output,activation):
+    def getGradCamMask(self, output, act):
         '''
-        This function calculates the importance weight reported in GradCam
-        Input:
-            ouput: The class output 
-            activation: activation that we will take gradient with respect to
+        Calculate the importance weight reported in GradCam
         '''
-        temp_grad= K.gradients(output,activation)
-        grad=K.gradients(output,activation)[0]
-        alpha=K.squeeze(K.mean(grad,axis=1),0)
-        mask=K.squeeze(K.relu(K.sum(activation*alpha,axis=2)),0)
-        return mask
+        alpha = K.squeeze(K.mean(K.gradients(output, act)[0], axis=1), 0)
+        return K.squeeze(K.relu(K.sum(act*alpha, axis=2)), 0)
 
-    def getGradCamMask_edge(self,output,activation):
+    def getGradCamMask_edge(self,output,act):
         '''
-        This function calculates the edge importance via gradient w.r.t. adj
-        Input:
-            ouput: The class output
-            activation: activation that we will take gradient with respect to
+        Calculates the edge importance via gradient w.r.t. adj
         '''
-        grad_adj=K.gradients(output,activation)[0]
-        mask_adj=K.squeeze(K.relu(grad_adj),0)
-        # set diagonal to be all 0
-        mask_adj = K.tf.linalg.set_diag(mask_adj, K.tf.zeros([K.tf.shape(mask_adj)[0], ]))
-        return mask_adj
+        mask_adj = K.squeeze(K.relu(K.gradients(output,act)[0]), 0)
+        return K.tf.linalg.set_diag(mask_adj, K.tf.zeros([K.tf.shape(mask_adj)[0], ]))  # set diagonal to be all 0
 
 class EB:
     def __init__(self, model):
@@ -77,7 +62,7 @@ class EB:
         
     def ebDense(self, activations, W, bottomP):
         '''
-        This function calculates eb for a dense layer
+        Calculate eb for a dense layer
         Input: 
             activations: d-dimensional vector
             W: Weights dxk-dimensional matrix
@@ -92,7 +77,7 @@ class EB:
 
     def ebMoleculeDense(self, activations, W, bottomP):
         '''
-        This function calculates eb for a dense layer
+        Calculate eb for a dense layer
         Input: 
             activations: 1x?xK
             W: Weights dxk-dimensional matrix KxL
@@ -108,7 +93,7 @@ class EB:
 
     def ebGAP(self, activations,bottomP):
         '''
-        This function calculates eb for GAP layer
+        Calculate eb for GAP layer
         Input: 
             activations: 1x?xK
             bottomP: probability matrix 1xK
@@ -123,7 +108,7 @@ class EB:
 
     def ebMoleculeAdj(self,activations,A,bottomP):
         '''
-        This function calculates eb for a Adj conv layer
+        Calculate eb for a Adj conv layer
         Input: 
             activations: 1x?xK
             A: Adjacency ?x?
@@ -138,7 +123,6 @@ class EB:
     def ebMoleculeEdge(self,activations,A,bottomP):
         # P: 1x?
         P = K.squeeze(K.sum(bottomP, axis=2), 0)
-
         mask_adj = A*P + A*K.tf.transpose(P)
 
         # set diagonal to be all 0
