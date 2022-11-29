@@ -1,5 +1,12 @@
 # How to run
 
-1. Install related packages by `pip install requirement.txt`
+1. Install related packages by `pip install requirements.txt`
+2. `python main.py`
 
-Run main.py
+# Description of each source file
+| Source file | Description |
+| --- | ----------- |
+| main.py | Script to execute GNES |
+| load_data.py | Load BBBP dataset and human annotated dataset |
+| preprocessing.py | Preprocess the loaded dataset |
+| training.py | construct and train a GNN |
