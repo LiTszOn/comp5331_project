@@ -847,9 +847,7 @@ def human_evaluate(model, data, index, human_data, exp_method):
             epsilon = 1e-6
             node_mask = node_mask / (node_mask.max() + epsilon)
             mse = np.mean((node_mask - M)**2)
-            mse = K.constant(mse)
             mae = np.mean(np.abs(node_mask - M))
-            mae = K.constant(mae)
             node_mse.append(mse)
             node_mae.append(mae)
 
