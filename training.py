@@ -22,23 +22,10 @@ def partition_dataset(smiles):
     train_partition, val_partition, test_partition = partitioner.split(dataset)
     return train_partition, val_partition, test_partition
 
-def build_gcn(exp_method_name="GCAM"):
+def build_gcn(explanation_method="GCAM"):
     """
     Keras GCN for graph classification
     """
-    # d = config['d']
-    # L1 = config['L1']
-    # L2 = config['L2']
-    # L3 = config['L3']
-    # N = config['N']
-    # print(f"N is {N}")
-    # num_classes = config['num_classes']
-    # print(f"batch_size is {batch_size}")
-    # exp_method_name = config['exp_method']
-
-    # currently the implementation of the pipeline only support batch_size = 1
-    # assert batch_size == 1, "Batch size != 1 Not Implemented!"
-
     first_input = Input(shape=(1,None,None), batch_shape=(1,None,None))
     second_input = Input(shape=(1, None, None), batch_shape=(1, None, None))
     third_input = Input(shape=(1, None, None), batch_shape=(1, None, None))
@@ -56,7 +43,6 @@ def build_gcn(exp_method_name="GCAM"):
     initial_weight_logit = RandomNormal(mean=0.0, stddev=0.1)
     initial_bias_logit = RandomNormal(mean=0.0, stddev=0.1)
         
-    # h1 = dense(L1)(K.tf.matmul(A_batch1, X_batch))
     first_output = Dense(256, activation='relu', kernel_initializer=initial_weight_first, bias_initializer=initial_bias_first, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([first_input, last_input]))
     second_output = Dense(128, activation='relu', kernel_initializer=initial_weight_second, bias_initializer=initial_bias_second, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([second_input, first_output]))
     third_output = Dense(64, activation='relu', kernel_initializer=initial_weight_third, bias_initializer=initial_bias_third, use_bias=True)(Lambda(lambda x: K.tf.matmul(x[0],x[1]))([third_input, second_output]))
@@ -64,19 +50,18 @@ def build_gcn(exp_method_name="GCAM"):
     fina_output = Softmax()(logits)
     model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=fina_output)
 
-    if exp_method_name =='GCAM':
+    if explanation_method =='GCAM':
         # node mask
         maskh0 = utils.getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
         maskh1 = utils.getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
         node_mask = K.stack([maskh0, maskh1], axis=0)
-        # node_mask = [maskh0,maskh1]
-
+        
         # edge mask
         maskh0_edge = utils.getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
         maskh1_edge = utils.getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
         edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
-
-    elif exp_method_name =='EB':
+    elif explanation_method =='EB':
+        # node mask
         pLamda4=utils.ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([1,0])))
         pdense3=utils.ebGAP(model.layers[-5].output,pLamda4)
         pLambda3=utils.ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
@@ -87,36 +72,20 @@ def build_gcn(exp_method_name="GCAM"):
         pin=utils.ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
         mask0=K.squeeze(K.sum(pin,axis=2),0)
         edge_mask0 = utils.ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+        node_mask = K.stack([mask0, mask1], axis=0)
 
+        # edge mask
         pLamda4=utils.ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([0,1])))
         pdense3=utils.ebGAP(model.layers[-5].output,pLamda4)
         pLambda3=utils.ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-        pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+        pdense2=utils.ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
         pLambda2=utils.ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
         pdense1=utils.ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
         pLambda1=utils.ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
         pin=utils.ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
         mask1=K.squeeze(K.sum(pin,axis=2),0)
         edge_mask1 = utils.ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        # node mask
-        node_mask = K.stack([mask0, mask1], axis=0)
-        # edge mask
         edge_mask = K.stack([edge_mask0, edge_mask1], axis=0)
-    else:
-        print('Unknown exp method name. use GCAM as default')
-        # node mask
-        maskh0 = utils.getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
-        maskh1 = utils.getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
-        node_mask = K.stack([maskh0, maskh1], axis=0)
-        # node_mask = [maskh0,maskh1]
-
-        # edge mask
-        maskh0_edge = utils.getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
-        maskh1_edge = utils.getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
-        edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
-    # model.compile(optimizer=Adam(lr=0.001),
-    #               loss=custom_loss(['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
     print("------------- model.compile ------------------")
     model.compile(optimizer=Adam(lr=0.001),
                   loss=loss_function.call_loss_function_of_GNES(K, ['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
