@@ -38,9 +38,6 @@ model_out_fn = "GNES_{}.h5".format("BBBP".lower())
 save_path = os.path.join(config["saved_models_dir"], model_out_fn)
 loss = utils.gcn_train(model, data, config['num_epochs'], train_partition, val_partition, save_path, human_data)
 
-# model = keras_gcn(training.build_gcn(config_original))
-# model.load_weights(save_path)
-
 train_eval = utils.evaluate(model, data, train_partition, human_data['train'], config['exp_method'], human_eval=True)
 test_eval = utils.evaluate(model, data, test_partition, human_data['test'], config['exp_method'], human_eval=True)
 val_eval = utils.evaluate(model, data, val_partition, human_data['val'], config['exp_method'], human_eval=True)

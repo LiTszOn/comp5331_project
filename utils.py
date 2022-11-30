@@ -323,9 +323,56 @@ def matmul(XY):
     X,Y = XY
     return K.tf.matmul(X,Y)
 
-
 def GAP(X):
     return K.tf.reduce_mean(X, axis=1, keepdims=True)
+
+def get_EBpin(model, vect):
+    pLamda4=ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array(vect)))
+    pdense3=ebGAP(model.layers[-5].output,pLamda4)
+    pLambda3=ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
+    pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+    pLambda2=ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
+    pdense1=ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
+    pLambda1=ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
+    pin=ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
+
+def expMethodSelection(model, method_name):
+    if method_name =='GCAM':
+        # node mask
+        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
+        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
+        mask_node = K.stack([maskh0, maskh1], axis=0)
+
+        # edge mask
+        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
+        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
+        mask_edge = K.stack([maskh0_edge, maskh1_edge], axis=0)
+
+    elif method_name =='EB':
+        mask0=K.squeeze(K.sum(get_EBpin(model, [1, 0]), axis=2),0)
+        mask0_edge = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+
+        mask1=K.squeeze(K.sum(get_EBpin(model, [0, 1]), axis=2),0)
+        mask1_edge = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+
+        # node mask
+        mask_node = K.stack([mask0, mask1], axis=0)
+        # edge mask
+        mask_edge = K.stack([mask0_edge, mask1_edge], axis=0)
+
+    else:
+        print('Unknown exp method name. use GCAM as default')
+        # node mask
+        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
+        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
+        node_mask = K.stack([maskh0, maskh1], axis=0)
+
+        # edge mask
+        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
+        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
+        mask_edge = K.stack([maskh0_edge, maskh1_edge], axis=0)
+    
+    return mask_node, mask_edge
 
 #john mimics def keras_gcn
 def build_gcn(config):
@@ -346,16 +393,6 @@ def build_gcn(config):
 
     # currently the implementation of the pipeline only support batch_size = 1
     assert batch_size == 1, "Batch size != 1 Not Implemented!"
-
-    # adjacency matrix, for regularization propose
-    # M = Input(shape=(batch_size, N, 1), batch_shape=(batch_size, N, 1))
-    # E = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
-    # Adj = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
-    # A_batch1 = Input(shape=(batch_size,N,N), batch_shape=(batch_size,N,N))
-    # A_batch2 = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
-    # A_batch3 = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
-    # X_batch = Input(shape=(batch_size,N,d), batch_shape=(batch_size,N,d))
-    # Y = Input(shape=(batch_size, num_classes), batch_shape=(batch_size, num_classes))
 
     first_input = Input(shape=(1,None,None), batch_shape=(1,None,None))
     second_input = Input(shape=(1, None, None), batch_shape=(1, None, None))
@@ -381,159 +418,13 @@ def build_gcn(config):
     gap=  Lambda(lambda y: K.squeeze(y, 1))(gap)
     logits = dense(num_classes, activation='linear')(gap)
     Y_hat = Softmax()(logits)
+
     model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=Y_hat)
-    # adj_matrix = Adj
-    # main_matrix = M
-    # edge_matrix = E
-    if exp_method_name =='GCAM':
-        # node mask
-        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
-        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
-        node_mask = K.stack([maskh0, maskh1], axis=0)
-        # node_mask = [maskh0,maskh1]
-
-        # edge mask
-        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
-        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
-        edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
-
-    elif exp_method_name =='EB':
-        pLamda4=ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([1,0])))
-        pdense3=ebGAP(model.layers[-5].output,pLamda4)
-        pLambda3=ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-        pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
-        pLambda2=ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
-        pdense1=ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
-        pLambda1=ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
-        pin=ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
-        mask0=K.squeeze(K.sum(pin,axis=2),0)
-        edge_mask0 = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        pLamda4=ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([0,1])))
-        pdense3=ebGAP(model.layers[-5].output,pLamda4)
-        pLambda3=ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-        pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
-        pLambda2=ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
-        pdense1=ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
-        pLambda1=ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
-        pin=ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
-        mask1=K.squeeze(K.sum(pin,axis=2),0)
-        edge_mask1 = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        # node mask
-        node_mask = K.stack([mask0, mask1], axis=0)
-        # edge mask
-        edge_mask = K.stack([edge_mask0, edge_mask1], axis=0)
-    else:
-        print('Unknown exp method name. use GCAM as default')
-        # node mask
-        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
-        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
-        node_mask = K.stack([maskh0, maskh1], axis=0)
-        # node_mask = [maskh0,maskh1]
-
-        # edge mask
-        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
-        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
-        edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
+    node_mask, edge_mask = expMethodSelection(model, exp_method_name)
     model.compile(optimizer=Adam(lr=0.001),
-                  loss=custom_loss(['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
+                  loss=custom_loss(['sparsity', 'consistency'], 
+                  logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
     return model
-
-def keras_gcn(config):
-    """
-    Keras GCN for graph classification
-    """
-    d = config['d']
-    init_stddev = config['init_stddev']
-    L1 = config['L1']
-    L2 = config['L2']
-    L3 = config['L3']
-    N = config['N']
-    num_classes = config['num_classes']
-    batch_size = config['batch_size']
-    reg_list = config['reg']
-    exp_method_name = config['exp_method']
-    learning_rate = config['learning_rate']
-
-    # currently the implementation of the pipeline only support batch_size = 1
-    assert batch_size == 1, "Batch size != 1 Not Implemented!"
-
-    # adjacency matrix, for regularization propose
-    M = Input(shape=(batch_size, N, 1), batch_shape=(batch_size, N, 1))
-    E = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
-    Adj = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
-    A_batch1 = Input(shape=(batch_size,N,N), batch_shape=(batch_size,N,N))
-    A_batch2 = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
-    A_batch3 = Input(shape=(batch_size, N, N), batch_shape=(batch_size, N, N))
-    X_batch = Input(shape=(batch_size,N,d), batch_shape=(batch_size,N,d))
-    # Y = Input(shape=(batch_size, num_classes), batch_shape=(batch_size, num_classes))
-
-    h1 = dense(L1)(Lambda(matmul)([A_batch1, X_batch]))
-    h2 = dense(L2)(Lambda(matmul)([A_batch2, h1]))
-    h3 = dense(L3)(Lambda(matmul)([A_batch3, h2]))
-    gap = Lambda(GAP)(h3)
-    gap=  Lambda(lambda y: K.squeeze(y, 1))(gap)
-    logits = dense(num_classes, activation='linear')(gap)
-    Y_hat = Softmax()(logits)
-    model = Model(inputs=[M, E, Adj, A_batch1, A_batch2, A_batch3, X_batch], outputs=Y_hat)
-
-    if exp_method_name =='GCAM':
-        # node mask
-        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
-        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
-        node_mask = K.stack([maskh0, maskh1], axis=0)
-        # node_mask = [maskh0,maskh1]
-
-        # edge mask
-        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
-        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
-        edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
-
-    elif exp_method_name =='EB':
-        pLamda4=ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([1,0])))
-        pdense3=ebGAP(model.layers[-5].output,pLamda4)
-        pLambda3=ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-        pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
-        pLambda2=ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
-        pdense1=ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
-        pLambda1=ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
-        pin=ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
-        mask0=K.squeeze(K.sum(pin,axis=2),0)
-        edge_mask0 = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        pLamda4=ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([0,1])))
-        pdense3=ebGAP(model.layers[-5].output,pLamda4)
-        pLambda3=ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-        pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
-        pLambda2=ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
-        pdense1=ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
-        pLambda1=ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
-        pin=ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
-        mask1=K.squeeze(K.sum(pin,axis=2),0)
-        edge_mask1 = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        # node mask
-        node_mask = K.stack([mask0, mask1], axis=0)
-        # edge mask
-        edge_mask = K.stack([edge_mask0, edge_mask1], axis=0)
-    else:
-        print('Unknown exp method name. use GCAM as default')
-        # node mask
-        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
-        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
-        node_mask = K.stack([maskh0, maskh1], axis=0)
-        # node_mask = [maskh0,maskh1]
-
-        # edge mask
-        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
-        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
-        edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
-    print("------------- model.compile ------------------")
-    model.compile(optimizer=Adam(lr=learning_rate),
-                  loss=loss_function.call_loss_function_of_GNES(K, reg_list, logits, Adj, node_mask, edge_mask, M, E))
-    return model
-
 
 # Define the proposed GNES loss
 def custom_loss(reg_list, logits, A, node_mask, edge_mask, M, E):

@@ -4,7 +4,7 @@ import json
 import sys
 sys.path.append("../")
 from config import load_config
-from utils import (load_data, preprocess, partition_train_val_test, keras_gcn, load_human_data)
+from utils import (load_data, preprocess, partition_train_val_test, build_gcn, load_human_data)
 from plot_utils import (draw_chem_activations, plot_image_grid,
                         create_figs, create_im_arrs)
 from explanation_methods import (GradCAM, EB)
@@ -21,7 +21,7 @@ chemicals = csv_data["smiles"]
 
 saved_model = "GNES_bbbp.h5"
 saved_path =  os.path.join(config["saved_models_dir"], saved_model)
-model = keras_gcn(config)
+model = build_gcn(config)
 model.load_weights(saved_path)
 num_classes = 2
 
