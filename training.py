@@ -7,8 +7,6 @@ from keras.layers import Input, Dense, Softmax, Lambda
 from keras import backend as K
 import utils
 from keras.initializers import RandomNormal
-
-
 import loss_function
 
 
@@ -60,6 +58,7 @@ def build_gcn(explanation_method="GCAM"):
         maskh0_edge = utils.getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
         maskh1_edge = utils.getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
         edge_mask = K.stack([maskh0_edge, maskh1_edge], axis=0)
+
     elif explanation_method =='EB':
         # node mask
         pLamda4=utils.ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([1,0])))
@@ -86,6 +85,7 @@ def build_gcn(explanation_method="GCAM"):
         mask1=K.squeeze(K.sum(pin,axis=2),0)
         edge_mask1 = utils.ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
         edge_mask = K.stack([edge_mask0, edge_mask1], axis=0)
+
     print("------------- model.compile ------------------")
     model.compile(optimizer=Adam(lr=0.001),
                   loss=loss_function.call_loss_function_of_GNES(K, ['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
