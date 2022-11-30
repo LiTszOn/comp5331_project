@@ -326,54 +326,6 @@ def matmul(XY):
 def GAP(X):
     return K.tf.reduce_mean(X, axis=1, keepdims=True)
 
-def get_EBpin(model, vect):
-    pLamda4=ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array(vect)))
-    pdense3=ebGAP(model.layers[-5].output,pLamda4)
-    pLambda3=ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-    pdense2=ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
-    pLambda2=ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
-    pdense1=ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
-    pLambda1=ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
-    pin=ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
-
-def expMethodSelection(model, method_name):
-    if method_name =='GCAM':
-        # node mask
-        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
-        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
-        mask_node = K.stack([maskh0, maskh1], axis=0)
-
-        # edge mask
-        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
-        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
-        mask_edge = K.stack([maskh0_edge, maskh1_edge], axis=0)
-
-    elif method_name =='EB':
-        mask0=K.squeeze(K.sum(get_EBpin(model, [1, 0]), axis=2),0)
-        mask0_edge = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        mask1=K.squeeze(K.sum(get_EBpin(model, [0, 1]), axis=2),0)
-        mask1_edge = ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        # node mask
-        mask_node = K.stack([mask0, mask1], axis=0)
-        # edge mask
-        mask_edge = K.stack([mask0_edge, mask1_edge], axis=0)
-
-    else:
-        print('Unknown exp method name. use GCAM as default')
-        # node mask
-        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
-        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
-        node_mask = K.stack([maskh0, maskh1], axis=0)
-
-        # edge mask
-        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
-        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
-        mask_edge = K.stack([maskh0_edge, maskh1_edge], axis=0)
-    
-    return mask_node, mask_edge
-
 #john mimics def keras_gcn
 def build_gcn(config):
     """
@@ -420,15 +372,66 @@ def build_gcn(config):
     Y_hat = Softmax()(logits)
 
     model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=Y_hat)
-    node_mask, edge_mask = expMethodSelection(model, exp_method_name)
+    
+    if exp_method_name =='GCAM':
+        # node mask
+        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
+        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
+        mask_node = K.stack([maskh0, maskh1], axis=0)
+
+        # edge mask
+        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
+        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
+        mask_edge = K.stack([maskh0_edge, maskh1_edge], axis=0)
+
+    elif exp_method_name =='EB':
+        pLamda4=EB_DenseLayer(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([1, 0])))
+        pdense3=EB_GAPLayer(model.layers[-5].output,pLamda4)
+        pLambda3=EB_MoleculeDenseLayer(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
+        pdense2=EB_MoleculeAdjLayer(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+        pLambda2=EB_MoleculeDenseLayer(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
+        pdense1=EB_MoleculeAdjLayer(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
+        pLambda1=EB_MoleculeDenseLayer(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
+        pin=EB_MoleculeAdjLayer(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
+        mask0=K.squeeze(K.sum(pin, axis=2),0)
+        mask0_edge = EB_MoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+
+        pLamda4=EB_DenseLayer(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([0, 1])))
+        pdense3=EB_GAPLayer(model.layers[-5].output,pLamda4)
+        pLambda3=EB_MoleculeDenseLayer(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
+        pdense2=EB_MoleculeAdjLayer(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+        pLambda2=EB_MoleculeDenseLayer(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
+        pdense1=EB_MoleculeAdjLayer(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
+        pLambda1=EB_MoleculeDenseLayer(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
+        pin=EB_MoleculeAdjLayer(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
+        mask1=K.squeeze(K.sum(pin, axis=2),0)
+        mask1_edge = EB_MoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+
+        # node mask
+        mask_node = K.stack([mask0, mask1], axis=0)
+        # edge mask
+        mask_edge = K.stack([mask0_edge, mask1_edge], axis=0)
+
+    else:
+        print('Unknown exp method name. use GCAM as default')
+        # node mask
+        maskh0 = getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
+        maskh1 = getGradCamMask(model.layers[-2].output[0,1],model.layers[-5].output)
+        node_mask = K.stack([maskh0, maskh1], axis=0)
+
+        # edge mask
+        maskh0_edge = getGradCamMask_edge(model.layers[-2].output[0,0],model.layers[6].input)
+        maskh1_edge = getGradCamMask_edge(model.layers[-2].output[0,1],model.layers[6].input)
+        mask_edge = K.stack([maskh0_edge, maskh1_edge], axis=0)
+
     model.compile(optimizer=Adam(lr=0.001),
                   loss=custom_loss(['sparsity', 'consistency'], 
-                  logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
+                  logits, adj_matrix, mask_node, mask_edge, main_matrix, edge_matrix))
     return model
 
 # Define the proposed GNES loss
 def custom_loss(reg_list, logits, A, node_mask, edge_mask, M, E):
-    # Create a loss function that adds the MSE loss to the mean of all squared activations of a specific layer
+    # Create a loss function that adds the MSE loss to the mean of all squared act_v of a specific layer
     def loss(y_true, y_pred):
 
         loss=K.mean(K.binary_crossentropy(y_true, logits, from_logits=True), axis=-1)
@@ -455,99 +458,67 @@ def custom_loss(reg_list, logits, A, node_mask, edge_mask, M, E):
     # Return a function
     return loss
 
-def getGradCamMask(output,activation):
+def getGradCamMask(output, act):
     '''
-    This function calculates the importance weight reported in GradCam
-    Input:
-        ouput: The class output
-        activation: activation that we will take gradient with respect to
+    Calculate the importance weight reported in GradCam
     '''
-    temp_grad= K.gradients(output,activation)
-    grad=K.gradients(output,activation)[0]
-    alpha=K.squeeze(K.mean(grad,axis=1),0)
-    mask=K.squeeze(K.relu(K.sum(activation*alpha,axis=2)),0)
+    temp_grad = K.gradients(output, act)
+    grad = K.gradients(output, act)[0]
+    alpha = K.squeeze(K.mean(grad, axis=1), 0)
+    mask = K.squeeze(K.relu(K.sum(act * alpha, axis=2)),0 )
     return mask
-def getGradCamMask_edge(output,activation):
+
+def getGradCamMask_edge(output, act):
     '''
-    This function calculates the edge importance via gradient w.r.t. adj
-    Input:
-        ouput: The class output
-        activation: activation that we will take gradient with respect to
+    Calculate the edge importance via gradient w.r.t. adj
     '''
-    grad_adj=K.gradients(output,activation)[0]
+    grad_adj=K.gradients(output,act)[0]
     mask_adj=K.squeeze(K.relu(grad_adj),0)
     # set diagonal to be all 0
     mask_adj = K.tf.linalg.set_diag(mask_adj, K.tf.zeros([K.tf.shape(mask_adj)[0], ]))
     return mask_adj
 
-def ebDense(activations, W, bottomP):
+def EB_DenseLayer(act_v, W, btmP_v):
     '''
-    This function calculates eb for a dense layer
-    Input:
-        activations: d-dimensional vector
-        W: Weights dxk-dimensional matrix
-        bottomP: k-dimensional probability vector
-    Output:
-        p: the probability of activation d-dimensional vector
+    Calculate eb for a dense layer
     '''
     Wrelu = K.relu(W)
-    pcond = K.tf.matmul(K.tf.diag(activations), Wrelu)
+    pcond = K.tf.matmul(K.tf.diag(act_v), Wrelu)
     pcond = pcond / (K.sum(pcond, axis=0) + 1e-5)
-    return K.transpose(K.tf.matmul(pcond, K.expand_dims(bottomP, 1)))
+    return K.transpose(K.tf.matmul(pcond, K.expand_dims(btmP_v, 1)))
 
-def ebMoleculeDense(activations, W, bottomP):
+def EB_MoleculeDenseLayer(act_v, W, btmP_v):
     '''
-    This function calculates eb for a dense layer
-    Input:
-        activations: 1x?xK
-        W: Weights dxk-dimensional matrix KxL
-        bottomP: probability matrix 1x?xL
-    Output:
-        p: probability matrix 1x?xK
+    Calculate eb for a molecule dense layer
     '''
     k, l = W.shape.as_list()
     Wrelu = K.relu(W)
-    pcond = K.tile(K.expand_dims(activations, 3), (1, 1, 1, l)) * Wrelu
-    p = K.mean(K.tile(K.expand_dims(bottomP, 2), (1, 1, k, 1)) * pcond, 3)
-    return p
+    pcond = K.tile(K.expand_dims(act_v, 3), (1, 1, 1, l)) * Wrelu
+    return K.mean(K.tile(K.expand_dims(btmP_v, 2), (1, 1, k, 1)) * pcond, 3)
 
-def ebGAP(activations, bottomP):
+def EB_GAPLayer(act_v, btmP_v):
     '''
-    This function calculates eb for GAP layer
-    Input:
-        activations: 1x?xK
-        bottomP: probability matrix 1xK
-    Output:
-        p: probability matrix 1x?xK
+    Calculate EB for GAP layer
     '''
-    epsilon = 1e-5
-    pcond = activations / (epsilon + K.sum(activations, axis=1))
-    p = pcond * K.squeeze(bottomP, 0)
-    p = p / (K.sum(p, axis=1) + epsilon)
-    return p
+    pcond = act_v / (1e-5 + K.sum(act_v, axis=1))
+    p = pcond * K.squeeze(btmP_v, 0)
+    return p / (K.sum(p, axis=1) + 1e-5)
 
-def ebMoleculeAdj(activations, A, bottomP):
+def EB_MoleculeAdjLayer(act_v, A, btmP_v):
     '''
-    This function calculates eb for a Adj conv layer
-    Input:
-        activations: 1x?xK
-        A: Adjacency ?x?
-        bottomP: probability matrix 1x?xK
-    Output:
-        p: probability matrix 1x?xK
+    Calculate EB for a Adj conv layer
     '''
-    pcond = K.expand_dims(K.tf.matmul(A, K.squeeze(activations, 0)), 0)
-    p = pcond * bottomP
-    return p
+    pcond = K.expand_dims(K.tf.matmul(A, K.squeeze(act_v, 0)), 0)
+    return pcond * btmP_v
 
-def ebMoleculeEdge(activations, A, bottomP):
-    P = K.squeeze(K.sum(bottomP, axis=2), 0)
+def EB_MoleculeEdge(act_v, A, btmP_v):
+    '''
+    Calculate EB for a Edge
+    '''
+    P = K.squeeze(K.sum(btmP_v, axis=2), 0)
     mask_adj = A * P + A * K.tf.transpose(P)
-
     # set diagonal to be all 0
-    mask_adj = K.tf.linalg.set_diag(mask_adj, K.tf.zeros([K.tf.shape(mask_adj)[0], ]))
-    return mask_adj
-
+    return K.tf.linalg.set_diag(mask_adj, K.tf.zeros([K.tf.shape(mask_adj)[0], ]))
 
 class MockDataset:
     """Mock Dataset class for a DeepChem Dataset"""

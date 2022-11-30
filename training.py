@@ -20,16 +20,6 @@ def partition_dataset(smiles):
     train_partition, val_partition, test_partition = partitioner.split(dataset)
     return train_partition, val_partition, test_partition
 
-def get_EBpin(model, vect):
-    pLamda4=utils.ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array(vect)))
-    pdense3=utils.ebGAP(model.layers[-5].output,pLamda4)
-    pLambda3=utils.ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-    pdense2=utils.ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
-    pLambda2=utils.ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
-    pdense1=utils.ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
-    pLambda1=utils.ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
-    pin=utils.ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
-    
 def build_gcn(explanation_method="GCAM"):
     """
     Keras GCN for graph classification
@@ -57,7 +47,7 @@ def build_gcn(explanation_method="GCAM"):
     logits = Dense(2, activation='linear', kernel_initializer=initial_weight_logit, bias_initializer=initial_bias_logit, use_bias=True)(Lambda(lambda y: K.squeeze(y, 1))(Lambda(lambda x: K.tf.reduce_mean(x, axis=1, keepdims=True))(third_output)))
     fina_output = Softmax()(logits)
     model = Model(inputs=[main_matrix, edge_matrix, adj_matrix, first_input, second_input, third_input, last_input], outputs=fina_output)
-
+    
     if explanation_method =='GCAM':
         # node mask
         maskh0 = utils.getGradCamMask(model.layers[-2].output[0,0],model.layers[-5].output)
@@ -71,16 +61,33 @@ def build_gcn(explanation_method="GCAM"):
 
     elif explanation_method =='EB':
         # node mask
-        mask0 = K.squeeze(K.sum(get_EBpin(model, [1, 0]), axis=2),0)
-        edge_mask0 = utils.ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+        pLamda4=utils.EB_DenseLayer(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([1, 0])))
+        pdense3=utils.EB_GAPLayer(model.layers[-5].output,pLamda4)
+        pLambda3=utils.EB_MoleculeDenseLayer(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
+        pdense2=utils.EB_MoleculeAdjLayer(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+        pLambda2=utils.EB_MoleculeDenseLayer(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
+        pdense1=utils.EB_MoleculeAdjLayer(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
+        pLambda1=utils.EB_MoleculeDenseLayer(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
+        pin=utils.EB_MoleculeAdjLayer(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
+        mask0 = K.squeeze(K.sum(pin, axis=2),0)
+        edge_mask0 = utils.EB_MoleculeEdgeLayer(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
         node_mask = K.stack([mask0, mask1], axis=0)
 
         # edge mask
-        mask1 = K.squeeze(K.sum(get_EBpin(model, [0, 1]), axis=2),0)
-        edge_mask1 = utils.ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
+        pLamda4=utils.EB_DenseLayer(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([0, 1])))
+        pdense3=utils.EB_GAPLayer(model.layers[-5].output,pLamda4)
+        pLambda3=utils.EB_MoleculeDenseLayer(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
+        pdense2=utils.EB_MoleculeAdjLayer(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+        pLambda2=utils.EB_MoleculeDenseLayer(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
+        pdense1=utils.EB_MoleculeAdjLayer(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
+        pLambda1=utils.EB_MoleculeDenseLayer(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
+        pin=utils.EB_MoleculeAdjLayer(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
+        mask1 = K.squeeze(K.sum(pin, axis=2),0)
+        edge_mask1 = utils.EB_MoleculeEdgeLayer(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
         edge_mask = K.stack([edge_mask0, edge_mask1], axis=0)
-
+    
     print("------------- model.compile ------------------")
     model.compile(optimizer=Adam(lr=0.001),
-                  loss=loss_function.call_loss_function_of_GNES(K, ['sparsity', 'consistency'], logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
+                  loss=loss_function.call_loss_function_of_GNES(K, ['sparsity', 'consistency'], 
+                  logits, adj_matrix, node_mask, edge_mask, main_matrix, edge_matrix))
     return model
