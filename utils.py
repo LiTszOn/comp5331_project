@@ -758,10 +758,11 @@ def edge_matrix_to_array(matrix):
 def gcn_train(model, data, num_epochs, trainSet, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
     #Remark: adjs and norm_adjs are list of square matrix
     #Features has 75 dimension
+    trainLoss = pd.DataFrame()
+    epoch_list, mean_train_loss_list, val_acc_list, val_auc_list = [], [], [], []
     adjMatrix = data['adjs']
     normMatrix = data['norm_adjs']
     labels_one_hot = data['labels_one_hot']
-
     node_features = data['node_features']
     total_loss = []
     best = 0
@@ -810,9 +811,18 @@ def gcn_train(model, data, num_epochs, trainSet, val_inds, save_path, human_data
                 model.save(save_path)
                 best = val_acc
                 print('Model saved!')
+        
+        epoch_list.append(epoch)
+        mean_train_loss_list.append(mean_train_loss)
+        val_acc_list.append(val_acc)
+        val_auc_list.append(val_auc)
         print("Now in epoch:%s_____Average Train Loss:%s_____acc:%s_____auc:%s"%(epoch, mean_train_loss, val_acc, val_auc))
         total_loss.extend(epoch_loss)
-
+    trainLoss['epoch'] = epoch_list
+    trainLoss['mean_train_loss'] = mean_train_loss_list
+    trainLoss['val_acc'] = val_acc_list
+    trainLoss['val_auc'] = val_auc_list
+    trainLoss.to_csv('saved_models/trainLoss.csv')
     return total_loss
 
 def run_train(config, data, inds, save_path, human_data, metric='AUC', train=True):
@@ -878,8 +888,6 @@ def human_evaluate(model, data, index, human_data, exp_method):
             # Normalize
             epsilon = 1e-6
             node_mask = node_mask / (node_mask.max() + epsilon)
-
-            node_mask = node_mask.numpy()
             mse = np.mean((node_mask - M)**2)
             mse = K.constant(mse)
             mae = np.mean(np.abs(node_mask - M))
@@ -888,12 +896,11 @@ def human_evaluate(model, data, index, human_data, exp_method):
             node_mae.append(mae)
 
             # edge importance
-            
             edge_mask = method.getMasks_edge([M, E, adjs ,norms, norms, norms, features])[label]
             # Normalize
             edge_mask *= adjs[0]
             edge_mask /= (edge_mask.max() + epsilon)
-            edge_mask = edge_mask.numpy()
+
             mse = np.mean((edge_mask - E)**2)
             mae = np.mean(np.abs(edge_mask - E))
             edge_mse.append(mse)
@@ -947,7 +954,7 @@ def evaluate(model, data, index, human_data, exp_method = 'GCAM', human_eval=Fal
                 "roc_auc": auc,
                 "precision": precision,
                 "avg_precision": precision,
-                "eval_time": (time.time() - t_eva),
+                "eval_time": (time.time() - t_eval),
                 "roc_curve": curve,
                 "pr_curve": pr_curve_}
 
@@ -984,4 +991,4 @@ def plot_roc_curve(split, metrics):
     plt.xlabel("False Positve Rate") 
     plt.ylabel("Precision") 
     plt.plot(fpr,tpr) 
-    plt.savefig("roc_curve_%s.png"%split)
+    plt.savefig("roc_vis/roc_curve_%s.png"%split)

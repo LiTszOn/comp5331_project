@@ -17,10 +17,18 @@ Welcome! This is the COMP5331 project "Learning to Explain Graph Neural Networks
 python main.py
 ```
 
-# Example for evaluation and explanantion @harry
-```
-```
+# Visualization
+After Running the main.py, the trained file will be saved in "saved_models/" as a .h5 file. 
 
+Next if you want to test the model by running some visualization examples, you could run
+```
+python visualization.py
+```
+By default, we selected [628, 593, 492] for visualization. You can also change to other chemicals by editing data_points in line 30.  
+```
+data_points = [628, 593, 492]
+```
+The visualization will be saved in "figs/" as .jpeg files
 # Description of each source file
 | Source file | Description |
 | --- | ----------- |
@@ -31,3 +39,5 @@ python main.py
 | explanation_methods.py | Optional explanation methods: GradCAM & EB |
 | loss_function.py | Loss function of GNES, including inference accuracy loss, explanability loss, and regularization loss |
 | utils.py | Common functions which are frequently reused|
+
+# Credits

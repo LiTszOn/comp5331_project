@@ -11,7 +11,7 @@ base_config['saved_models_dir'] = 'saved_models'
 base_config['results_dir'] = 'results'
 base_config['fig_dir'] = 'figs'
 base_config['reg'] = ['sparsity', 'consistency'] # the regularization to use, choices: ['sparsity', 'consistency']
-base_config['exp_method'] = 'EB' # ["Grad", "GCAM", "EB", "cEB"]
+base_config['exp_method'] = 'GCAM' # ["Grad", "GCAM", "EB", "cEB"]
 base_config['human_data_dir'] = 'human_mask' # the location where human labeled explanations are stored
 base_config['human_mask'] = True # The flag for whether to use human labeled explanation
 

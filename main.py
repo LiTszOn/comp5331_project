@@ -4,6 +4,7 @@ import training
 import utils
 import config
 import os
+import pandas as pd
 import random
 import tensorflow as tf
 import numpy as np
@@ -46,8 +47,19 @@ val_eval = utils.evaluate(model, data, val_partition, human_data['val'], config[
 
 eval_metric = {0:{"train": train_eval,"test": test_eval,"val": val_eval}}
 
-for metric in ["roc_auc", "avg_precision", "node_mse", "node_mae", "edge_mse", "edge_mae"]:
-    print(metric)
-    for split in ["train", "val  ", "test "]:
-        res = utils.print_eval_avg(eval_metric, split.strip(), metric)
-        print(split + " " + res)
+trainList = []
+valList = []
+testList = []
+index = ["roc_auc", "avg_precision", "node_mse", "node_mae", "edge_mse", "edge_mae"]
+evaldf = pd.DataFrame(index = index)
+for metric in index:
+    trainList.append(utils.print_eval_avg(eval_metric, 'train', metric))
+    valList.append(utils.print_eval_avg(eval_metric, 'val', metric))
+    testList.append(utils.print_eval_avg(eval_metric, 'test', metric))
+evaldf['train'] = trainList
+evaldf['val'] = valList
+evaldf['test'] = testList
+evaldf.to_csv('saved_models/evaluation.csv')
+
+for split in ["test"]:
+    utils.plot_roc_curve(split, eval_metric)
