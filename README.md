@@ -10,7 +10,7 @@ Welcome! This is the COMP5331 project "Learning to Explain Graph Neural Networks
 # Environment 
 * Python 3.7.9
     * Install related packages by `pip install requirements.txt`
-* OS: Red Hat 8.5.0-7 （recommened, not necessary）
+* OS: Red Hat 8.5.0-7 （recommended, but not necessary）
 # Run
 ```
 python main.py
