@@ -848,8 +848,8 @@ def print_evals(eval_dict):
     print("eval time (s): {0:.3f}".format(eval_dict["eval_time"]))
 
 
-def human_evaluate(model, data, inds, human_data, exp_method):
-    start = time.time()
+def human_evaluate(model, data, index, human_data, exp_method):
+    t_load = time.time()
     if exp_method == 'GCAM':
         method = GradCAM(model)
     elif exp_method == 'EB':
@@ -857,81 +857,85 @@ def human_evaluate(model, data, inds, human_data, exp_method):
     else:
         print('Unknown exp method name, use Grad-CAM as default instead')
         method = GradCAM(model)
-    end = time.time()
-    print("Finish loading exp method, time used:", end - start)
+    print("Time used for loading methods:", time.time() - t_load)
 
-    start = time.time()
+    t_heval = time.time()
     node_mse = []
     node_mae = []
     edge_mse = []
     edge_mae = []
-    for i in inds:
+    for i in index:
         if i in human_data:
-            Adj = data["adjs"][i][np.newaxis, :, :]
             label = np.argmax(data["labels_one_hot"][i])
-
-            M = np.array(human_data[i]['node_importance'])[np.newaxis, :, np.newaxis]
-            E = np.array(human_data[i]['edge_importance'])[np.newaxis, :, :]
-
+            adjs = data["adjs"][i][np.newaxis, :, :]
+            norms = data["norm_adjs"][i][np.newaxis, :, :]
+            features = data["node_features"][i][np.newaxis, :, :]
+            M = np.expand_dims(np.array(human_data[i]['node_importance']), axis=0)
+            M = np.expand_dims(M, axis=-1)
+            E = np.expand_dims(np.array(human_data[i]['edge_importance']), axis=0)
             # node importance
-            node_mask = method.getMasks([M, E, data["adjs"][i][np.newaxis, :, :] ,data["norm_adjs"][i][np.newaxis, :, :], data["norm_adjs"][i][np.newaxis, :, :], data["norm_adjs"][i][np.newaxis, :, :],
-                                      data["node_features"][i][np.newaxis, :, :]])[label]
+            node_mask = method.getMasks([M, E, adjs ,norms, norms, norms, features])[label]
             # Normalize
-            node_mask /= (node_mask.max() + 1e-6)
+            epsilon = 1e-6
+            node_mask = node_mask / (node_mask.max() + epsilon)
 
-            mse = K.mean(K.square(node_mask-M))
-            mae = K.mean(K.abs(node_mask-M))
+            node_mask = node_mask.numpy()
+            mse = np.mean((node_mask - M)**2)
+            mse = K.constant(mse)
+            mae = np.mean(np.abs(node_mask - M))
+            mae = K.constant(mae)
             node_mse.append(mse)
             node_mae.append(mae)
 
             # edge importance
-            edge_mask = method.getMasks_edge([M, E, data["adjs"][i][np.newaxis, :, :] ,data["norm_adjs"][i][np.newaxis, :, :], data["norm_adjs"][i][np.newaxis, :, :], data["norm_adjs"][i][np.newaxis, :, :],
-                                      data["node_features"][i][np.newaxis, :, :]])[label]
+            
+            edge_mask = method.getMasks_edge([M, E, adjs ,norms, norms, norms, features])[label]
             # Normalize
-            edge_mask *= Adj[0]
-            edge_mask /= (edge_mask.max() + 1e-6)
-            mse = K.mean(K.square(edge_mask-E))
-            mae = K.mean(K.abs(edge_mask-E))
+            edge_mask *= adjs[0]
+            edge_mask /= (edge_mask.max() + epsilon)
+            edge_mask = edge_mask.numpy()
+            mse = np.mean((edge_mask - E)**2)
+            mae = np.mean(np.abs(edge_mask - E))
             edge_mse.append(mse)
             edge_mae.append(mae)
 
-    end = time.time()
-    print("Finish evaluation, time used:", end - start)
+    print("Time used for human evaluation:", time.time() - t_heval)
+    return {"node_mse":np.mean(node_mse),
+        "node_mae":np.mean(node_mae),
+        "edge_mae":np.mean(edge_mae),
+        "edge_mse":np.mean(edge_mse)}
 
-    return {"node_mse":np.mean(K.eval(K.stack(node_mse))),
-            "node_mae":np.mean(K.eval(K.stack(node_mae))),
-            "edge_mae":np.mean(K.eval(K.stack(edge_mae))),
-            "edge_mse":np.mean(K.eval(K.stack(edge_mse)))}
 
-def evaluate(model, data, inds, human_data, exp_method = 'GCAM', human_eval=False, thresh=0.5):
-    t_test = time.time()
-    preds = []
-    for i in inds:
-        dim = len(data['adjs'][i])
-        input_1 = np.zeros((1, dim, 1))
-        input_2 = np.zeros((1, dim, dim))
-        input_3 = np.array([data["adjs"][i]])
-        input_4 = np.array([data["norm_adjs"][i]])
-        input_5, input_6 = input_4, input_4
-        input_7 = np.array([data["node_features"][i]])
-        pred = model.predict([input_1, input_2, input_3, input_4, input_5, input_6, input_7])[0][1]
-        preds.append(pred)
-    preds = np.array(preds)
-    labels = np.array([np.argmax(data["labels_one_hot"][i]) for i in inds])
-    roc_auc = roc_auc_score(labels, preds)
-    roc_curve_ = roc_curve(labels, preds)
-    precision = precision_score(labels, (preds > thresh).astype('int'), zero_division=0)
-    acc = accuracy_score(labels, (preds > thresh).astype('int'))
-    ap = average_precision_score(labels, preds)
-    pr_curve_ = precision_recall_curve(labels, preds)
+
+def evaluate(model, data, index, human_data, exp_method = 'GCAM', human_eval=False, thresh=0.5):
+    t_eval = time.time()
+    for i in index:
+        new_zeros = data["adjs"][i].shape[-1]
+        norms = data["norm_adjs"][i][np.newaxis, :, :]
+        adjs = data["adjs"][i][np.newaxis, :, :]
+        features = data["node_features"][i][np.newaxis, :, :]
+        inputs = [np.zeros((1, new_zeros, 1)), np.zeros((1, new_zeros, new_zeros)), adjs, norms, norms, norms, features]
+        if i == index[0]:
+            prediction = model.predict(inputs)
+        else:
+            prediction = np.concatenate((prediction, model.predict(inputs)), axis=0)
+
+    prediction = prediction[:,1]
+    label = np.array([np.argmax(data["labels_one_hot"][i]) for i in index])
+    auc = roc_auc_score(label, prediction)
+    curve = roc_curve(label, prediction)
+    precision = precision_score(label, (prediction > thresh).astype('int'), zero_division=0)
+    acc = accuracy_score(label, (prediction > thresh).astype('int'))
+    ap = average_precision_score(label, prediction)
+    pr_curve_ = precision_recall_curve(label, prediction)
     if human_eval:
-        out = human_evaluate(model, data, inds, human_data, exp_method)
+        out = human_evaluate(model, data, index, human_data, exp_method)
         return {"accuracy": acc,
-                "roc_auc": roc_auc,
+                "roc_auc": auc,
                 "precision": precision,
-                "avg_precision": precision,
-                "eval_time": (time.time() - t_test),
-                "roc_curve": roc_curve_,
+                "avg_precision": ap,
+                "eval_time": (time.time() - t_eval),
+                "roc_curve": curve,
                 "pr_curve": pr_curve_,
                 "node_mse": out["node_mse"],
                 "edge_mse": out["edge_mse"],
@@ -940,13 +944,12 @@ def evaluate(model, data, inds, human_data, exp_method = 'GCAM', human_eval=Fals
                 }
 
     return {"accuracy": acc,
-                "roc_auc": roc_auc,
+                "roc_auc": auc,
                 "precision": precision,
                 "avg_precision": precision,
-                "eval_time": (time.time() - t_test),
-                "roc_curve": roc_curve_,
+                "eval_time": (time.time() - t_eva),
+                "roc_curve": curve,
                 "pr_curve": pr_curve_}
-
 
 def print_eval_avg(eval_dict, split, metric):
     N = len(eval_dict.keys())
