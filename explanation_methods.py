@@ -32,99 +32,65 @@ class GradCAM:
 
 class EB:
     def __init__(self, model):
-        pLamda4=self.ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([1,0])))
-        pdense3=self.ebGAP(model.layers[-5].output,pLamda4)
-        pLambda3=self.ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-        pdense2=self.ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
-        pLambda2=self.ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
-        pdense1=self.ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
-        pLambda1=self.ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
-        pin=self.ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
-        mask0=K.squeeze(K.sum(pin,axis=2),0)
-        edge_mask0 = self.ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        pLamda4=self.ebDense(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array([0,1])))
-        pdense3=self.ebGAP(model.layers[-5].output,pLamda4)
-        pLambda3=self.ebMoleculeDense(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
-        pdense2=self.ebMoleculeAdj(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
-        pLambda2=self.ebMoleculeDense(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
-        pdense1=self.ebMoleculeAdj(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
-        pLambda1=self.ebMoleculeDense(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
-        pin=self.ebMoleculeAdj(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
-        mask1=K.squeeze(K.sum(pin,axis=2),0)
-        edge_mask1 = self.ebMoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
-
-        getMasks=K.function([model.inputs[0],model.inputs[1],model.inputs[2], model.layers[0].input , model.layers[3].input, model.layers[6].input, model.layers[1].input],[mask0,mask1])
-        getMasks_edge=K.function([model.inputs[0],model.inputs[1],model.inputs[2], model.layers[0].input, model.layers[3].input, model.layers[6].input, model.layers[1].input],[edge_mask0,edge_mask1])
-
-        self.getMasks = getMasks
-        self.getMasks_edge = getMasks_edge
+        mask0 = K.squeeze(K.sum(get_Pin(self, model, [1, 0]), axis=2), 0)
+        mask0_edge = self.EB_MoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
         
-    def ebDense(self, activations, W, bottomP):
-        '''
-        Calculate eb for a dense layer
-        Input: 
-            activations: d-dimensional vector
-            W: Weights dxk-dimensional matrix
-            bottomP: k-dimensional probability vector
-        Output:
-            p: the probability of activation d-dimensional vector    
-        '''
-        Wrelu=K.relu(W)
-        pcond=K.tf.matmul(K.tf.diag(activations),Wrelu)
-        pcond=pcond/(K.sum(pcond,axis=0) + 1e-5)
-        return K.transpose(K.tf.matmul(pcond,K.expand_dims(bottomP,1)))
+        mask1 = K.squeeze(K.sum(get_Pin(self, model, [0, 1]), axis=2), 0)
+        mask1_edge = self.EB_MoleculeEdge(model.layers[-13].output, K.squeeze(model.layers[0].input, 0), pLambda1)
 
-    def ebMoleculeDense(self, activations, W, bottomP):
-        '''
-        Calculate eb for a dense layer
-        Input: 
-            activations: 1x?xK
-            W: Weights dxk-dimensional matrix KxL
-            bottomP: probability matrix 1x?xL
-        Output:
-            p: probability matrix 1x?xK
-        '''
-        k,l=W.shape.as_list()
-        Wrelu=K.relu(W)
-        pcond=K.tile(K.expand_dims(activations,3),(1,1,1,l))*Wrelu
-        p=K.mean(K.tile(K.expand_dims(bottomP,2),(1,1,k,1))*pcond,3)
-        return p
+        self.getMasks = K.function([model.inputs[0],model.inputs[1],model.inputs[2], 
+                        model.layers[0].input , model.layers[3].input, model.layers[6].input, model.layers[1].input],
+                        [mask0,mask1])
+        self.getMasks_edge = K.function([model.inputs[0],model.inputs[1],model.inputs[2], 
+                            model.layers[0].input, model.layers[3].input, model.layers[6].input, model.layers[1].input],
+                            [mask0_edge,mask1_edge])
+        
+    def get_Pin(self, model, vect):
+        pLamda4 = self.EB_DenseLayer(K.squeeze(model.layers[-3].output,0),model.layers[-2].weights[0],K.variable(np.array(vect)))
+        pdense3 = self.EB_GAPLayer(model.layers[-5].output,pLamda4)
+        pLambda3 = self.EB_MoleculeDenseLayer(model.layers[-6].output,model.layers[-5].weights[0],pdense3)
+        pdense2 = self.EB_MoleculeAdjLayer(model.layers[-7].output,K.squeeze(model.layers[6].input,0),pLambda3)
+        pLambda2 = self.EB_MoleculeDenseLayer(model.layers[-9].output,model.layers[-7].weights[0],pdense2)
+        pdense1 = self.EB_MoleculeAdjLayer(model.layers[-10].output,K.squeeze(model.layers[3].input,0),pLambda2)
+        pLambda1 = self.EB_MoleculeDenseLayer(model.layers[-12].output,model.layers[-10].weights[0],pdense1)
+        pin = self.EB_MoleculeAdjLayer(model.layers[-13].output,K.squeeze(model.layers[0].input,0),pLambda1)
+        return pin
 
-    def ebGAP(self, activations,bottomP):
+    def EB_DenseLayer(self, act_v, W, btmP_v):
         '''
-        Calculate eb for GAP layer
-        Input: 
-            activations: 1x?xK
-            bottomP: probability matrix 1xK
-        Output:
-            p: probability matrix 1x?xK
+        Calculate EB for a dense layer    
         '''
-        epsilon=1e-5
-        pcond=activations/(epsilon+K.sum(activations,axis=1))
-        p=pcond*K.squeeze(bottomP,0)
-        p=p/(K.sum(p,axis=1)+epsilon)
-        return p
+        pcond = K.tf.matmul(K.tf.diag(act_v), K.relu(W))
+        pcond = pcond / (K.sum(pcond,axis=0) + 1e-5)
+        return K.transpose(K.tf.matmul(pcond,K.expand_dims(btmP_v, 1)))
 
-    def ebMoleculeAdj(self,activations,A,bottomP):
+    def EB_MoleculeDenseLayer(self, act_v, W, btmP_v):
         '''
-        Calculate eb for a Adj conv layer
-        Input: 
-            activations: 1x?xK
-            A: Adjacency ?x?
-            bottomP: probability matrix 1x?xK
-        Output:
-            p: probability matrix 1x?xK
+        Calculate EB for a molecule dense layer
         '''
-        pcond=K.expand_dims(K.tf.matmul(A,K.squeeze(activations,0)),0)
-        p=pcond*bottomP
-        return p
+        k,l = W.shape.as_list()
+        pcond = K.tile(K.expand_dims(act_v,3),(1,1,1,l)) * K.relu(W)
+        return K.mean(K.tile(K.expand_dims(btmP_v,2),(1,1,k,1)) * pcond, 3)
 
-    def ebMoleculeEdge(self,activations,A,bottomP):
-        # P: 1x?
-        P = K.squeeze(K.sum(bottomP, axis=2), 0)
-        mask_adj = A*P + A*K.tf.transpose(P)
+    def EB_GAPLayer(self, act_v, btmP_v):
+        '''
+        Calculate EB for a GAP layer
+        '''
+        pcond = act_v/(1e-5 + K.sum(act_v, axis=1))
+        p = pcond * K.squeeze(btmP_v, 0)
+        return p / (K.sum(p, axis=1) + 1e-5)
 
+    def EB_MoleculeAdjLayer(self, act_v, A, btmP_v):
+        '''
+        Calculate EB for a Adj conv layer
+        '''
+        pcond = K.expand_dims(K.tf.matmul(A, K.squeeze(act_v, 0)),0)
+        return pcond * btmP_v
+
+    def EB_MoleculeEdge(self, act_v, A, btmP_v):
+        '''
+        Calculate EB for a Edge
+        '''
+        mask_adj = A*(K.squeeze(K.sum(btmP_v, axis=2), 0)) + A*K.tf.transpose(P)
         # set diagonal to be all 0
-        mask_adj = K.tf.linalg.set_diag(mask_adj, K.tf.zeros([K.tf.shape(mask_adj)[0], ]))
-        return mask_adj
+        return K.tf.linalg.set_diag(mask_adj, K.tf.zeros([K.tf.shape(mask_adj)[0], ]))
