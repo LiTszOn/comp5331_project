@@ -658,48 +658,6 @@ def ebMoleculeEdge(activations, A, bottomP):
     return mask_adj
 
 
-# def train_gcn(adj_matrix,normalised_adj,one_hot_label,features,model, data, num_epochs, training_data, val_inds, save_path, human_data, metric='AUC', exp_method='GCAM'):
-#     total_loss = []
-#     best = 0
-#     for epoch in range(num_epochs):
-#         epoch_loss = []
-#         #Train
-#         permutation_set = np.random.permutation(training_data)
-#         print(f"permutation_set: {permutation_set}")
-#         for ri in permutation_set:
-
-#             if ri in human_data['train']:
-#                 sample_loss = model.train_on_batch(x=[np.array(human_data['train'][ri]['node_importance'])[np.newaxis, :, np.newaxis], np.array(human_data['train'][ri]['edge_importance'])[np.newaxis, :, :], adj_matrix[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], features[ri][np.newaxis, :, :]], y=one_hot_label[ri][np.newaxis, :], )
-#             else:
-#                 sample_loss = model.train_on_batch(x=[np.zeros((1, adj_matrix.shape[1], 1)), np.zeros((1, adj_matrix.shape[1], adj_matrix.shape[1])), adj_matrix[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], normalised_adj[ri][np.newaxis, :, :], features[ri][np.newaxis, :, :]], y=one_hot_label[ri][np.newaxis, :], )
-#             epoch_loss.append(sample_loss)
-#             # print(sample_loss)
-
-#         #Eval
-#         val_eval = evaluate(model, data, val_inds, human_data['val'], exp_method= exp_method, human_eval=False)
-
-#         mean_train_loss = sum(epoch_loss) / len(epoch_loss)
-#         val_acc = val_eval['accuracy']
-#         val_auc = val_eval['roc_auc']
-#         # node_mse = val_eval["node_mse"]
-#         # node_mae = val_eval["node_mae"]
-#         # edge_mse = val_eval["edge_mse"]
-#         # edge_mae = val_eval["edge_mae"]
-
-#         # choose best model base on AUC
-#         # if metric == 'AUC':
-#         if val_auc>best:
-#             model.save(save_path)
-#             best = val_auc
-#             print('Model saved!')
-
-#         print("Epoch: {}, Train Loss: {:.3f}, Val ACC: {:.3f}, AUC: {:.3f}.".format(epoch, mean_train_loss, val_acc, val_auc))
-#         # print("Human evaluation: node MSE: {:.3f}, node MAE: {:.3f}, edge MSE: {:.3f}, edge MAE: {:.3f}.".format(node_mse, node_mae, edge_mse, edge_mae))
-#         total_loss.extend(epoch_loss)
-#     assert False, "debugging"
-#     return total_loss, best
-
-
 class MockDataset:
     """Mock Dataset class for a DeepChem Dataset"""
     def __init__(self, smiles):

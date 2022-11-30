@@ -11,12 +11,11 @@ Welcome! This is the COMP5331 project "Learning to Explain Graph Neural Networks
 * Python 3.7.9
     * Install related packages by `pip install requirements.txt`
 * OS: Red Hat 8.5.0-7 （recommened, not necessary）
-
 # Run
 ```
 python main.py
 ```
-
+It will run the training. The evaluation and ROC curve will be saved in "saved_models/"
 # Visualization
 After Running the main.py, the trained file will be saved in "saved_models/" as a .h5 file. 
 
@@ -39,5 +38,10 @@ The visualization will be saved in "figs/" as .jpeg files
 | explanation_methods.py | Optional explanation methods: GradCAM & EB |
 | loss_function.py | Loss function of GNES, including inference accuracy loss, explanability loss, and regularization loss |
 | utils.py | Common functions which are frequently reused|
-
 # Credits
+We adopted some of the codes from the original author. In particular, we reused the following files:
+| Used files | Description |
+| --- | ----------- |
+| utils.py | Some utility function are used |
+| plot_utils.py | Some configuration of the plots |
+| config.py | The configuration of the dataset is reused |
