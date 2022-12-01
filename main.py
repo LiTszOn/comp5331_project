@@ -59,4 +59,4 @@ evaldf['test'] = testList
 evaldf.to_csv('saved_models/evaluation.csv')
 
 for split in ["test"]:
-    utils.plot_roc_curve(split, eval_metric)
+    utils.plot_roc_curve(test_eval)

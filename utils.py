@@ -802,11 +802,11 @@ def occlude_and_predict(Adj, X_arr, A_arr, masks, thresh, model):
     y_hat_occ = prob_occ.argmax()
     return y_hat_occ
 
-def plot_roc_curve(split, metrics):
-    fpr = metrics['%s'%split]['roc_curve'][0]
-    tpr = metrics['%s'%split]['roc_curve'][1]
+def plot_roc_curve(metrics):
+    fpr = metrics['roc_curve'][0]
+    tpr = metrics['roc_curve'][1]
     plt.title("ROC curve") 
     plt.xlabel("False Positve Rate") 
     plt.ylabel("Precision") 
     plt.plot(fpr,tpr) 
-    plt.savefig("roc_vis/roc_curve_%s.png"%split)
+    plt.savefig("roc_vis/roc_curve.png")
